@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 Mesh-LLM contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Tailscale connectivity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  connectivity:
+    name: Private tailnet connectivity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:mesh-llm-ci
+
+      - name: Verify Tailscale state
+        run: |
+          tailscale status
+          tailscale ip -4
+
+      - name: Verify MeshLLM peer connectivity
+        if: ${{ vars.MESH_LLM_TAILSCALE_PEER != '' }}
+        run: |
+          tailscale ping "${{ vars.MESH_LLM_TAILSCALE_PEER }}"
+
+      - name: Verify MeshLLM API reachability
+        if: ${{ vars.MESH_LLM_TAILSCALE_API_URL != '' }}
+        run: |
+          curl --fail --silent --show-error --connect-timeout 10             "${{ vars.MESH_LLM_TAILSCALE_API_URL }}/v1/models"
