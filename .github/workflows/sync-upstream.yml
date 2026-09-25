@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Sync with Mesh LLM upstream
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Sync fork main with upstream
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        shell: bash
+        env:
+          UPSTREAM_URL: https://github.com/Mesh-LLM/mesh-llm.git
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream main
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            {
+              echo "## Upstream sync"
+              echo
+              echo "Fork main is already up to date with Mesh-LLM/mesh-llm main."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! git merge --no-edit --no-ff upstream/main; then
+            git merge --abort || true
+            {
+              echo "## Upstream sync requires manual conflict resolution"
+              echo
+              echo "The fork contains changes that conflict with Mesh-LLM/mesh-llm main."
+              echo
+              echo "Resolve the merge locally, push the resolved merge to main, and the next scheduled run will resume automatically."
+              echo
+              echo "Upstream: Mesh-LLM/mesh-llm main"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          git push origin main
+
+          {
+            echo "## Upstream sync completed"
+            echo
+            echo "Merged Mesh-LLM/mesh-llm main into the fork's main branch."
+            echo
+            echo "Upstream commit: $(git rev-parse upstream/main)"
+            echo "Fork commit: $(git rev-parse HEAD)"
+          } >> "$GITHUB_STEP_SUMMARY"
