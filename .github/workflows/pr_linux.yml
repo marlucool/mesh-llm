@@ -69,7 +69,7 @@ jobs:
       checks: write
       contents: read
       packages: read
-    uses: Mesh-LLM/mesh-llm/.github/workflows/ci-linux-lane.yml@main
+    uses: ./.github/workflows/ci-linux-lane.yml
     with:
       lane_plan_json: ${{ needs.plan.outputs.lane_plan }}
       plan_digest: ${{ needs.plan.outputs.plan_digest }}
