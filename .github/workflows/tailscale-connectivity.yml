@@ -38,6 +38,8 @@ jobs:
         if: ${{ vars.MESH_LLM_TAILSCALE_API_URL != '' }}
         run: |
           API_URL="${{ vars.MESH_LLM_TAILSCALE_API_URL }}"
+          API_URL="${API_URL%/}"
           API_URL="${API_URL%/v1}"
+          API_URL="${API_URL%/}"
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
             "${API_URL}/v1/models"
