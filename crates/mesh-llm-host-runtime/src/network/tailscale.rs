@@ -272,5 +272,4 @@ mod tests {
             "100.64.0.3".parse().expect("valid IP")
         ));
     }
-    }
 }
