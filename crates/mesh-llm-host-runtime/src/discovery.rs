@@ -47,6 +47,7 @@ impl DiscoveryScope {
         match self {
             Self::Public => "public",
             Self::Lan => "lan",
+            Self::Tailnet => "tailnet",
         }
     }
 }
