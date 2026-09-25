@@ -56,6 +56,16 @@ struct TailscaleJoinResponse {
     invite_token: String,
 }
 
+pub(crate) fn is_tailscale_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(ip) => ip.octets()[0] == 100 && (64..=127).contains(&ip.octets()[1]),
+        std::net::IpAddr::V6(ip) => {
+            let segments = ip.segments();
+            segments[0] == 0xfd7a && segments[1] == 0x115c && segments[2] == 0xa1e0
+        }
+    }
+}
+
 pub(crate) async fn discover_mesh_peers(
     target_name: Option<&str>,
     timeout: Duration,
