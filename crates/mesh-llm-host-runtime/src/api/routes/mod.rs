@@ -47,6 +47,10 @@ pub(super) const DISPATCH_REQUEST: DispatchRequestFn =
                     discover::handle(stream, state).await?;
                     Ok(true)
                 }
+                ("GET", "/api/tailscale/join") => {
+                    discover::handle_tailscale_join(stream, state).await?;
+                    Ok(true)
+                }
                 ("GET", "/health") => {
                     health::handle(stream, state).await?;
                     Ok(true)
