@@ -7,6 +7,7 @@ use std::time::Duration;
 
 const DEFAULT_MESH_API_PORT: u16 = 9337;
 const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+const REQUIRED_MESHLLM_TAILSCALE_TAG: &str = "tag:mesh-llm";
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct TailscaleMeshPeer {
@@ -41,6 +42,8 @@ struct TailscalePeer {
     os: Option<String>,
     #[serde(rename = "Online", default)]
     online: bool,
+    #[serde(rename = "Tags", default)]
+    tags: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,18 +72,23 @@ pub(crate) fn is_tailscale_ip(ip: std::net::IpAddr) -> bool {
     }
 }
 
-/// Return whether an address is currently assigned to a peer known by the local
-/// Tailscale control plane. This is deliberately stronger than checking whether
-/// an address falls inside Tailscale's IPv4 CGNAT range: a CGNAT address alone is
-/// not proof that the TCP caller is a tailnet member.
+/// Return whether an address belongs to a currently known, explicitly
+/// MeshLLM-authorized Tailscale peer. A Tailscale IP range alone is not proof of
+/// authorization, so the peer must both appear in the local control-plane state
+/// and carry the dedicated MeshLLM tag.
 pub(crate) fn is_known_tailscale_peer(ip: std::net::IpAddr) -> Result<bool> {
     let status = read_status()?;
-    let matches = |peer: &TailscalePeer| {
-        peer.addresses.iter()
-            .filter_map(|address| address.parse::<std::net::IpAddr>().ok())
-            .any(|address| address == ip)
-    };
-    Ok(matches(&status.self_peer) || status.peers.values().any(matches))
+    Ok(is_authorized_peer(&status.self_peer, ip)
+        || status.peers.values().any(|peer| is_authorized_peer(peer, ip)))
+}
+
+fn is_authorized_peer(peer: &TailscalePeer, ip: std::net::IpAddr) -> bool {
+    let address_matches = peer
+        .addresses
+        .iter()
+        .filter_map(|address| address.parse::<std::net::IpAddr>().ok())
+        .any(|address| address == ip);
+    address_matches && peer.tags.iter().any(|tag| tag == REQUIRED_MESHLLM_TAILSCALE_TAG)
 }
 
 pub async fn discover_mesh_peers(
@@ -97,7 +105,9 @@ pub async fn discover_mesh_peers(
     let mut candidates = Vec::new();
 
     for peer in status.peers.into_values() {
-        if !peer.online || peer.addresses.iter().any(|addr| self_addresses.contains(addr)) {
+        if !peer.online
+            || !has_meshllm_tag(&peer)
+            || peer.addresses.iter().any(|addr| self_addresses.contains(addr)) {
             continue;
         }
 
@@ -165,6 +175,10 @@ pub async fn discover_mesh_peers(
     Ok(candidates)
 }
 
+fn has_meshllm_tag(peer: &TailscalePeer) -> bool {
+    peer.tags.iter().any(|tag| tag == REQUIRED_MESHLLM_TAILSCALE_TAG)
+}
+
 fn read_status() -> Result<TailscaleStatus> {
     let output = Command::new("tailscale")
         .args(["status", "--json"])
@@ -214,9 +228,9 @@ mod tests {
     fn tailscale_status_decodes_peer_map() {
         let status: TailscaleStatus = serde_json::from_str(
             r#"{
-                "Self":{"HostName":"router","TailscaleIPs":["100.64.0.1"],"Online":true},
+                "Self":{"HostName":"router","TailscaleIPs":["100.64.0.1"],"Online":true,"Tags":["tag:mesh-llm"]},
                 "Peer":{
-                    "node-key":{"HostName":"worker","TailscaleIPs":["100.64.0.2"],"OS":"linux","Online":true}
+                    "node-key":{"HostName":"worker","TailscaleIPs":["100.64.0.2"],"OS":"linux","Online":true,"Tags":["tag:mesh-llm","tag:other"]}
                 }
             }"#,
         )
@@ -225,5 +239,38 @@ mod tests {
         assert_eq!(status.self_peer.hostname, "router");
         assert_eq!(status.peers["node-key"].hostname, "worker");
         assert!(status.peers["node-key"].online);
+        assert!(has_meshllm_tag(&status.peers["node-key"]));
+    }
+
+    #[test]
+    fn untagged_peers_are_not_meshllm_authorized() {
+        let peer: TailscalePeer = serde_json::from_str(
+            r#"{"HostName":"worker","TailscaleIPs":["100.64.0.2"],"Online":true,"Tags":["tag:other"]}"#,
+        )
+        .expect("peer should decode");
+
+        assert!(!is_authorized_peer(
+            &peer,
+            "100.64.0.2".parse().expect("valid IP")
+        ));
+        assert!(!has_meshllm_tag(&peer));
+    }
+
+    #[test]
+    fn meshllm_tag_authorizes_peer_by_exact_tag() {
+        let peer: TailscalePeer = serde_json::from_str(
+            r#"{"HostName":"worker","TailscaleIPs":["100.64.0.2"],"Online":true,"Tags":["tag:mesh-llm"]}"#,
+        )
+        .expect("peer should decode");
+
+        assert!(is_authorized_peer(
+            &peer,
+            "100.64.0.2".parse().expect("valid IP")
+        ));
+        assert!(!is_authorized_peer(
+            &peer,
+            "100.64.0.3".parse().expect("valid IP")
+        ));
+    }
     }
 }
