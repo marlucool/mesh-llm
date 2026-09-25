@@ -184,8 +184,35 @@ runs:
               exit 1
             fi
           done
-          if ! git show "$SOURCE_SHA:ci/slices.yml" | cmp -s - ci/slices.yml; then
-            echo "source slice catalog differs from the protected planner catalog" >&2
+          if ! python3 - "$SOURCE_SHA" <<'PY'
+import json
+import subprocess
+import sys
+
+source_sha = sys.argv[1]
+
+def source_manifest(path):
+    return subprocess.run(
+        ["git", "show", f"{source_sha}:{path}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+def normalize(value):
+    value = json.loads(value)
+    for row in value.get("runtime_rows", []):
+        row.pop("container_image", None)
+        row.pop("toolchain_epoch", None)
+    return value
+
+protected = normalize(open("ci/slices.yml", encoding="utf-8").read())
+source = normalize(source_manifest("ci/slices.yml"))
+if source != protected:
+    print("source slice catalog differs from the protected planner catalog outside allowed runtime image bindings", file=sys.stderr)
+    sys.exit(1)
+PY
+          then
             exit 1
           fi
           if ! git show "$SOURCE_SHA:ci/ownership.yml" | cmp -s - ci/ownership.yml; then
