@@ -61,7 +61,7 @@ the MeshLLM API normally needs TCP port `9337`:
 The exact `tagOwners` entry should follow your existing tailnet ownership
 policy; the example above leaves tag management to tailnet administrators.
 Tailscale tags are intended for non-human devices and also identify the device
-for access-control purposes. citeturn758209search6turn758209search5
+for access-control purposes. See the [Tailscale tags documentation](https://tailscale.com/docs/features/tags).
 
 MeshLLM checks the local Tailscale control-plane peer state before returning its
 automatic join bootstrap token. The caller must both match a currently known
@@ -83,7 +83,7 @@ normal mesh membership
 ```
 
 Tailscale's GitHub Action follows the same principle: CI runners receive an
-explicit tag and are governed by the grants attached to that tag. citeturn758209search0turn758209search3
+explicit tag and are governed by the grants attached to that tag. See the [Tailscale GitHub Action documentation](https://tailscale.com/docs/integrations/github/github-action).
 ## Tailscale addresses
 
 When diagnosing a node, check its Tailscale IPv4 address with:
