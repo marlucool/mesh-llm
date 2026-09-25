@@ -1427,6 +1427,14 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_command_parses() {
+        let cli = Cli::try_parse_from(["mesh-llm", "dashboard"])
+            .expect("dashboard command should parse");
+
+        assert!(matches!(cli.command, Some(Command::Dashboard)));
+    }
+
+    #[test]
     fn doctor_tailscale_parses_with_json_output() {
         let cli = Cli::try_parse_from(["mesh-llm", "doctor", "tailscale", "--json"])
             .expect("tailscale doctor command should parse");
