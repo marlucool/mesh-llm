@@ -24,6 +24,8 @@ pub(crate) enum ServiceInstallStatus {
     NeedsManualStart,
 }
 
+const WINDOWS_TASK_NAME: &str = "mesh-llm";
+
 pub(crate) fn install_service(
     context: &ServiceInstallContext,
     runner: &mut dyn ServiceCommandRunner,
@@ -31,8 +33,87 @@ pub(crate) fn install_service(
     match context.platform {
         SetupPlatform::Linux => install_systemd_service(context, runner),
         SetupPlatform::MacOs => install_launchd_service(context, runner),
-        SetupPlatform::Windows => bail!("setup cannot install the background service on windows"),
+        SetupPlatform::Windows => install_windows_service(context, runner),
     }
+}
+
+fn install_windows_service(
+    context: &ServiceInstallContext,
+    runner: &mut dyn ServiceCommandRunner,
+) -> Result<ServiceInstallReport> {
+    let paths = ServicePaths::from_context(context);
+    fs::create_dir_all(&paths.service_config_dir)?;
+    ensure_service_env_file(&paths.service_env_file)?;
+
+    let task_command = format!("\"{}\" serve", context.binary_path.display());
+    runner
+        .run(&ServiceCommand::new(
+            "schtasks.exe",
+            [
+                "/Create",
+                "/SC",
+                "ONLOGON",
+                "/TN",
+                WINDOWS_TASK_NAME,
+                "/TR",
+                task_command,
+                "/F",
+                "/RL",
+                "LIMITED",
+            ],
+        ))
+        .with_context(|| format!("create Windows scheduled task {WINDOWS_TASK_NAME}"))?;
+
+    let started = if context.start_service {
+        runner
+            .run(&ServiceCommand::new(
+                "schtasks.exe",
+                ["/Run", "/TN", WINDOWS_TASK_NAME],
+            ))
+            .with_context(|| format!("start Windows scheduled task {WINDOWS_TASK_NAME}"))?;
+        true
+    } else {
+        false
+    };
+
+    let mut messages = Vec::new();
+    if started {
+        messages.push(format!(
+            "Installed and started Windows logon task: {WINDOWS_TASK_NAME}"
+        ));
+    } else {
+        messages.push(format!(
+            "Installed Windows logon task: {WINDOWS_TASK_NAME}"
+        ));
+        messages.push(format!(
+            "Start it with: schtasks.exe /Run /TN {WINDOWS_TASK_NAME}"
+        ));
+    }
+    messages.push(format!("Command: {task_command}"));
+    messages.push(format!(
+        "Join state: ~/.mesh-llm/invite.token is used automatically after an explicit --join"
+    ));
+    messages.push(format!(
+        "Edit startup models: {}",
+        paths.mesh_config_file.display()
+    ));
+
+    Ok(ServiceInstallReport {
+        status: if started {
+            ServiceInstallStatus::Started
+        } else {
+            ServiceInstallStatus::NeedsManualStart
+        },
+        summary: if started {
+            "installed and started".to_string()
+        } else {
+            "installed; automatic start needs manual follow-up".to_string()
+        },
+        messages,
+        service_file: paths.service_env_file,
+        env_file: paths.service_env_file,
+        runner_file: None,
+    })
 }
 
 fn install_systemd_service(
