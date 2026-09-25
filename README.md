@@ -36,7 +36,7 @@ Finish setup:
 mesh-llm setup
 ```
 
-On Windows PowerShell, use `mesh-llm.exe setup`. (For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).)
+On Windows PowerShell, use `mesh-llm.exe setup`. For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).
 
 For a worker that should reconnect after a restart, install the background service too:
 
@@ -44,12 +44,11 @@ For a worker that should reconnect after a restart, install the background servi
 mesh-llm setup --service
 ```
 
-A successful explicit `--join <token>` is remembered in
+A successful join—whether from an invite token or automatic discovery—is remembered in
 `~/.mesh-llm/invite.token`, so the service can reuse it after a reboot. Linux
 users who need the service before login can also enable lingering with
 `sudo loginctl enable-linger $USER`. Windows uses a per-user Task Scheduler
-logon task and macOS uses a launchd agent.
- *(For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).)*
+logon task and macOS uses a launchd agent.*
 
 To remove an executable install later, preview the cleanup first:
 
