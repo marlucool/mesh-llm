@@ -1118,21 +1118,24 @@ pub(super) async fn run_auto_join_existing_mesh(
         auto_join_candidates.to_vec()
     };
     let prefer_fast_probe = should_prefer_fast_auto_join(options, auto_join_candidates);
-    let explicit_join_requested = !options.join.is_empty();
     let outcome = attempt_run_auto_join(node, &join_attempts, prefer_fast_probe).await;
 
-    if explicit_join_requested
-        && let Some((token, _)) = outcome.successful_join.as_ref()
+    // A successful discovery join returns the node's normal MeshLLM invite token.
+    // Remember it so a service restart can reconnect without requiring the
+    // discovery provider to be available during startup. Never copy a
+    // file-backed token into the literal state: those files are intentionally
+    // re-read on every rejoin tick so credential rotation takes effect.
+    if let Some((token, _)) = outcome.successful_join.as_ref()
         && !join_sources::file_backed_join_tokens(options).contains(token)
     {
         match join_sources::persist_join_token(options.config.as_deref(), token) {
             Ok(path) => tracing::info!(
                 path = %path.display(),
-                "Persisted explicit mesh join token for automatic reconnect"
+                "Persisted joined mesh token for automatic reconnect"
             ),
             Err(error) => tracing::warn!(
                 error = %error,
-                "Joined mesh successfully, but could not persist the explicit join token"
+                "Joined mesh successfully, but could not persist the mesh join token"
             ),
         }
     }
