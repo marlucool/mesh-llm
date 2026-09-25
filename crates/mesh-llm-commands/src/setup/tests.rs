@@ -138,7 +138,7 @@ fn no_service_flag_skips_service_without_prompt() {
 }
 
 #[test]
-fn windows_service_flag_is_an_unsupported_error() {
+fn windows_service_flag_installs_service_without_prompt() {
     let options = SetupOptions {
         service: true,
         ..SetupOptions::default()
@@ -149,15 +149,9 @@ fn windows_service_flag_is_an_unsupported_error() {
     };
     let mut prompter = FakePrompter::default();
 
-    let error =
-        plan_setup(options, environment, &mut prompter).expect_err("windows service must fail");
+    let plan = plan_setup(options, environment, &mut prompter).expect("windows service should plan");
 
-    assert_eq!(
-        error,
-        SetupPlanError::UnsupportedService {
-            platform: SetupPlatform::Windows,
-        }
-    );
+    assert_eq!(plan.service, SetupServicePlan::Install);
     assert!(prompter.prompts.is_empty());
 }
 

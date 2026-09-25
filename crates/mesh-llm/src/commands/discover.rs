@@ -3,6 +3,7 @@ use std::io::Write;
 use anyhow::Result;
 
 use mesh_llm_host_runtime::command_support::discovery::{self, nostr};
+use mesh_llm_host_runtime::network::tailscale;
 use mesh_llm_system::backend;
 
 pub(crate) struct DiscoverOptions {
@@ -34,6 +35,7 @@ pub(crate) async fn run_discover(options: DiscoverOptions) -> Result<()> {
         mesh_llm_cli::MeshDiscoveryMode::Nostr => {
             run_nostr_discover(filter, options.auto_join, options.relays).await
         }
+        mesh_llm_cli::MeshDiscoveryMode::Tailscale => run_tailscale_discover(filter, options.auto_join).await,
         mesh_llm_cli::MeshDiscoveryMode::Mdns => {
             run_lan_discover(filter, options.auto_join, options.supplied_join_tokens).await
         }
@@ -223,6 +225,62 @@ async fn run_lan_discover(
             err,
             "  mesh-llm --join <token> discover --mesh-discovery-mode mdns --auto"
         )?;
+    }
+
+    Ok(())
+}
+
+async fn run_tailscale_discover(
+    filter: nostr::MeshFilter,
+    auto_join: bool,
+) -> Result<()> {
+    let target = filter.name.as_deref();
+    let peers =
+        tailscale::discover_mesh_peers(target, std::time::Duration::from_secs(2)).await?;
+
+    let mut err = mesh_llm_events::console_err();
+    if peers.is_empty() {
+        writeln!(
+            err,
+            "No MeshLLM peers found on the Tailscale tailnet (peers must carry tag:mesh-llm)."
+        )?;
+        return Ok(());
+    }
+
+    writeln!(err, "Found {} MeshLLM peer(s) on Tailscale:\n", peers.len())?;
+    for (i, peer) in peers.iter().enumerate() {
+        let models = if peer.models.is_empty() {
+            "(no models loaded)".to_string()
+        } else {
+            peer.models.join(", ")
+        };
+        let probe = peer
+            .latency_ms
+            .map(|value| format!("{value} ms"))
+            .unwrap_or_else(|| "unmeasured".to_string());
+        writeln!(
+            err,
+            "  [{}] {}  {}  probe: {}  models: {}",
+            i + 1,
+            peer.hostname,
+            peer.api_base_url,
+            probe,
+            models
+        )?;
+    }
+
+    if auto_join {
+        if let Some(peer) = peers.iter().find(|peer| peer.invite_token.is_some()) {
+            let mut out = mesh_llm_events::machine_out();
+            writeln!(out, "{}", peer.invite_token.as_deref().unwrap_or_default())?;
+            writeln!(err, "Selected Tailscale MeshLLM peer: {}", peer.hostname)?;
+        } else {
+            writeln!(err, "No Tailscale MeshLLM peer offered a join bootstrap.")?;
+            writeln!(
+                err,
+                "The peer must run MeshLLM with Tailscale discovery enabled."
+            )?;
+        }
     }
 
     Ok(())

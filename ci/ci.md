@@ -1212,3 +1212,8 @@ retaining shared model caches and diagnostic logs. Runner-contract removes its
 Cargo target output. Hosted fallback rows retain their normal disposable-runner
 lifecycle. The workflow contract test requires final cleanup for every declared
 self-hosted job, including custom `mesh-llm-*` runner matrix labels.
+
+
+## Tailscale connectivity workflow
+
+`.github/workflows/tailscale-connectivity.yml` is a manual-only workflow for validating access to a configured private MeshLLM tailnet. It uses GitHub OIDC with `TS_OAUTH_CLIENT_ID` and `TS_AUDIENCE`, the `tag:mesh-llm-ci` identity, and optional `MESH_LLM_TAILSCALE_PEER` / `MESH_LLM_TAILSCALE_API_URL` repository variables. It has no checkout step and pins `tailscale/github-action` to immutable v4.1.3 commit `780049a30b6ff5c378a9e7b389d15ece7a204888`. API probes have both connection and total-time limits.

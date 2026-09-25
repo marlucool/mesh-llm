@@ -2,7 +2,7 @@ use super::super::{
     MeshApi,
     http::{respond_error, respond_json},
 };
-use crate::network::{discovery, nostr};
+use crate::network::{discovery, nostr, tailscale};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -18,6 +18,15 @@ pub(super) async fn handle(stream: &mut TcpStream, state: &MeshApi) -> anyhow::R
                 Ok(meshes) => serde_json::to_string(&meshes),
                 Err(e) => {
                     respond_error(stream, 500, &format!("Discovery failed: {e}")).await?;
+                    return Ok(());
+                }
+            }
+        }
+        discovery::MeshDiscoveryMode::Tailscale => {
+            match tailscale::discover_mesh_peers(None, std::time::Duration::from_secs(2)).await {
+                Ok(peers) => serde_json::to_string(&peers),
+                Err(e) => {
+                    respond_error(stream, 500, &format!("Tailscale discovery failed: {e}")).await?;
                     return Ok(());
                 }
             }
@@ -44,6 +53,52 @@ pub(super) async fn handle(stream: &mut TcpStream, state: &MeshApi) -> anyhow::R
         }
         Err(_) => respond_error(stream, 500, "Failed to serialize").await?,
     }
+    Ok(())
+}
+
+pub(super) async fn handle_tailscale_join(
+    stream: &mut TcpStream,
+    state: &MeshApi,
+) -> anyhow::Result<()> {
+    let mode = {
+        let inner = state.inner.lock().await;
+        inner.mesh_discovery_mode
+    };
+    if mode != discovery::MeshDiscoveryMode::Tailscale {
+        respond_error(
+            stream,
+            404,
+            "Tailscale join is only available in Tailscale discovery mode",
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let remote = stream.peer_addr()?.ip();
+    match tailscale::is_known_tailscale_peer(remote) {
+        Ok(true) => {}
+        Ok(false) => {
+            respond_error(stream, 403, "MeshLLM-tagged Tailscale peer required").await?;
+            return Ok(());
+        }
+        Err(err) => {
+            tracing::warn!(%err, %remote, "failed to validate Tailscale peer for automatic join");
+            respond_error(stream, 503, "Tailscale trust state unavailable").await?;
+            return Ok(());
+        }
+    }
+
+    let node = {
+        let inner = state.inner.lock().await;
+        inner.node.clone()
+    };
+    let invite_token = node.invite_token().await;
+    respond_json(
+        stream,
+        200,
+        &serde_json::json!({ "invite_token": invite_token }),
+    )
+    .await?;
     Ok(())
 }
 

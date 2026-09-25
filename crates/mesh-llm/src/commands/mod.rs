@@ -25,7 +25,7 @@ pub async fn dispatch(cli: &Cli) -> Result<bool> {
     let Some(cmd) = cli.command.as_ref() else {
         return Ok(false);
     };
-    if matches!(cmd, Command::Serve | Command::Client) {
+    if matches!(cmd, Command::Serve | Command::Client | Command::Dashboard) {
         return Ok(false);
     }
     let family = match cmd {
@@ -56,7 +56,7 @@ async fn dispatch_command(cli: &Cli, cmd: &Command) -> Result<()> {
 
 async fn dispatch_general_command(cli: &Cli, cmd: &Command) -> Result<()> {
     match cmd {
-        Command::Serve | Command::Client => Ok(()),
+        Command::Serve | Command::Client | Command::Dashboard => Ok(()),
         Command::Models { command } => {
             dispatch_models_command(command).await?;
             Ok(())

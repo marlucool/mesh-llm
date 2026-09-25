@@ -33,9 +33,11 @@
 //! literals only, and every startup consumer resolves through this module
 //! instead of reading `options.join`.
 
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use super::RuntimeOptions;
 
@@ -99,6 +101,47 @@ fn environment_join_token_files() -> Vec<PathBuf> {
 pub(crate) fn default_join_token_file(config_override: Option<&Path>) -> Option<PathBuf> {
     let config = mesh_llm_config::config_path(config_override).ok()?;
     Some(config.parent()?.join(DEFAULT_JOIN_TOKEN_FILE_NAME))
+}
+
+/// Persist an explicitly supplied invite token so a service/dashboard can
+/// reconnect after the machine restarts.
+pub(crate) fn persist_join_token(
+    config_override: Option<&Path>,
+    token: &str,
+) -> Result<PathBuf> {
+    let token = token.trim();
+    if token.is_empty() {
+        bail!("cannot persist an empty invite token");
+    }
+
+    let path = default_join_token_file(config_override)
+        .context("cannot resolve default invite-token path")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create invite-token directory {}", parent.display()))?;
+    }
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&path)
+        .with_context(|| format!("open invite-token file {}", path.display()))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("protect invite-token file {}", path.display()))?;
+    }
+
+    file.write_all(token.as_bytes())
+        .and_then(|()| file.write_all(b"\n"))
+        .with_context(|| format!("write invite-token file {}", path.display()))?;
+    file.flush()
+        .with_context(|| format!("flush invite-token file {}", path.display()))?;
+
+    Ok(path)
 }
 
 /// The default token file to consult, given the file sources already named.
@@ -389,6 +432,21 @@ mod tests {
         assert_eq!(
             default_join_token_file(Some(&config)),
             Some(PathBuf::from("/path/project").join(DEFAULT_JOIN_TOKEN_FILE_NAME))
+        );
+    }
+
+    #[test]
+    fn persist_join_token_writes_the_default_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("config.toml");
+
+        let path = persist_join_token(Some(&config), "remembered-token")
+            .expect("token should persist");
+
+        assert_eq!(path, temp.path().join(DEFAULT_JOIN_TOKEN_FILE_NAME));
+        assert_eq!(
+            std::fs::read_to_string(path).expect("token file should be readable"),
+            "remembered-token\n"
         );
     }
 

@@ -51,6 +51,42 @@ pub(super) async fn maybe_discover_join_candidates(
             )
             .await?;
         }
+        mesh_discovery::MeshDiscoveryMode::Tailscale => {
+            let _ = emit_event(OutputEvent::DiscoveryStarting {
+                source: mesh_discovery::discovery_source_label(
+                    options.mesh_discovery_mode,
+                    "auto-discovery",
+                ),
+            });
+            let peers = mesh_discovery::tailscale::discover_mesh_peers(
+                target_name.as_deref(),
+                std::time::Duration::from_secs(2),
+            )
+            .await
+            .inspect_err(|_| {
+                record_discovery_operational_event(DiscoveryOperationalEvent::DiscoveryFailed);
+            })?;
+            let mut joinable_peers = 0usize;
+            for peer in peers {
+                let _ = emit_event(OutputEvent::MeshFound {
+                    mesh: peer.hostname.clone(),
+                    peers: 1,
+                    region: None,
+                });
+                if let Some(token) = peer.invite_token {
+                    auto_join_candidates.push((token, Some(peer.hostname)));
+                    joinable_peers += 1;
+                }
+            }
+
+            if joinable_peers == 0 {
+                record_discovery_operational_event(DiscoveryOperationalEvent::DiscoveryFailed);
+                let _ = emit_event(OutputEvent::DiscoveryFailed {
+                    message: "No Tailscale MeshLLM peer offered a join bootstrap".to_string(),
+                    detail: Some("The peer must run MeshLLM with Tailscale discovery enabled and be reachable through the tailnet.".to_string()),
+                });
+            }
+        }
         mesh_discovery::MeshDiscoveryMode::Mdns => {
             let _ = emit_event(OutputEvent::DiscoveryStarting {
                 source: mesh_discovery::discovery_source_label(
@@ -1082,7 +1118,25 @@ pub(super) async fn run_auto_join_existing_mesh(
         auto_join_candidates.to_vec()
     };
     let prefer_fast_probe = should_prefer_fast_auto_join(options, auto_join_candidates);
+    let explicit_join_requested = !options.join.is_empty();
     let outcome = attempt_run_auto_join(node, &join_attempts, prefer_fast_probe).await;
+
+    if explicit_join_requested
+        && let Some((token, _)) = outcome.successful_join.as_ref()
+        && !join_sources::file_backed_join_tokens(options).contains(token)
+    {
+        match join_sources::persist_join_token(options.config.as_deref(), token) {
+            Ok(path) => tracing::info!(
+                path = %path.display(),
+                "Persisted explicit mesh join token for automatic reconnect"
+            ),
+            Err(error) => tracing::warn!(
+                error = %error,
+                "Joined mesh successfully, but could not persist the explicit join token"
+            ),
+        }
+    }
+
     update_cli_with_successful_run_auto_join(options, outcome.successful_join);
 
     if !outcome.joined {

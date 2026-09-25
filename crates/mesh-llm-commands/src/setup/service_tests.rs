@@ -112,6 +112,53 @@ fn launchd_plist_escapes_xml_specials_in_paths() {
 }
 
 #[test]
+fn windows_service_install_registers_logon_task() {
+    let temp = tempfile::tempdir().expect("tempdir should exist");
+    let home_dir = temp.path().join("home");
+    let config_root = temp.path().join("config");
+    let binary_path = temp.path().join("bin/mesh-llm.exe");
+    fs::create_dir_all(binary_path.parent().expect("binary parent should exist"))
+        .expect("binary dir should exist");
+    fs::write(&binary_path, "binary").expect("binary should write");
+
+    let context = ServiceInstallContext {
+        platform: SetupPlatform::Windows,
+        home_dir,
+        config_root,
+        binary_path: binary_path.clone(),
+        user_id: String::new(),
+        start_service: true,
+    };
+    let mut runner = FakeRunner::default();
+
+    let report = install_service(&context, &mut runner).expect("Windows service install should succeed");
+
+    assert_eq!(report.status, ServiceInstallStatus::Started);
+    assert_eq!(report.summary, "installed and started");
+    assert_eq!(
+        runner.commands,
+        vec![
+            ServiceCommand::new(
+                "schtasks.exe",
+                [
+                    "/Create",
+                    "/SC",
+                    "ONLOGON",
+                    "/TN",
+                    "mesh-llm",
+                    "/TR",
+                    format!("\"{}\" serve", binary_path.display()),
+                    "/F",
+                    "/RL",
+                    "LIMITED",
+                ],
+            ),
+            ServiceCommand::new("schtasks.exe", ["/Run", "/TN", "mesh-llm"]),
+        ]
+    );
+}
+
+#[test]
 fn linux_service_install_writes_systemd_files_and_runs_expected_commands() {
     let temp = tempfile::tempdir().expect("tempdir should exist");
     let home_dir = temp.path().join("home");

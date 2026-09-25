@@ -34,6 +34,7 @@ pub enum MeshDiscoveryMode {
     #[default]
     Nostr,
     Mdns,
+    Tailscale,
 }
 
 impl MeshDiscoveryMode {
@@ -41,6 +42,7 @@ impl MeshDiscoveryMode {
         match self {
             Self::Nostr => "nostr",
             Self::Mdns => "mdns",
+            Self::Tailscale => "tailscale",
         }
     }
 
@@ -48,6 +50,7 @@ impl MeshDiscoveryMode {
         match self {
             Self::Nostr => "nostr-relay",
             Self::Mdns => "mdns-sd",
+            Self::Tailscale => "tailscale",
         }
     }
 
@@ -55,6 +58,7 @@ impl MeshDiscoveryMode {
         match self {
             Self::Nostr => DiscoveryScope::Public,
             Self::Mdns => DiscoveryScope::Lan,
+            Self::Tailscale => DiscoveryScope::Tailnet,
         }
     }
 }
@@ -64,6 +68,7 @@ impl MeshDiscoveryMode {
 pub enum DiscoveryScope {
     Public,
     Lan,
+    Tailnet,
 }
 
 impl DiscoveryScope {
@@ -71,6 +76,7 @@ impl DiscoveryScope {
         match self {
             Self::Public => "public",
             Self::Lan => "lan",
+            Self::Tailnet => "tailnet",
         }
     }
 }
@@ -416,7 +422,7 @@ impl SpeculativeNgramProposerCli {
     name = "mesh-llm",
     version = mesh_llm_build_info::BUILD_VERSION,
     about = "Pool GPUs over the internet for LLM inference",
-    after_help = "Preferred runtime entrypoints:\n  mesh-llm serve\n  mesh-llm serve --model Qwen3-8B-Q4_K_M\n  mesh-llm client --auto\n  mesh-llm gpus\n\n`mesh-llm serve` loads startup models from ~/.mesh-llm/config.toml.\nRun with --help-advanced for all options.\n\nExternal backends (vLLM, TGI, Ollama):\n  Install the plugin:\n    mesh-llm plugins install openai-endpoint\n  Add to ~/.mesh-llm/config.toml:\n    [[plugin]]\n    name = \"openai-endpoint\"\n    url = \"http://gpu-box:8000/v1\"\n  Then: mesh-llm serve     (or: mesh-llm client  for client-only mode)\n\nFlash-MoE SSD backend:\n  Install the plugin:\n    mesh-llm plugins install flash-moe\n  Add [[plugin]] name = \"flash-moe\" with url or plugin-owned args.\n  Then: mesh-llm serve     (or: mesh-llm client  for client-only mode)"
+    after_help = "Preferred runtime entrypoints:\n  mesh-llm serve\n  mesh-llm serve --model Qwen3-8B-Q4_K_M\n  mesh-llm client --auto\n  mesh-llm dashboard\n  mesh-llm gpus\n\n`mesh-llm serve` loads startup models from ~/.mesh-llm/config.toml.\nRun with --help-advanced for all options.\n\nExternal backends (vLLM, TGI, Ollama):\n  Install the plugin:\n    mesh-llm plugins install openai-endpoint\n  Add to ~/.mesh-llm/config.toml:\n    [[plugin]]\n    name = \"openai-endpoint\"\n    url = \"http://gpu-box:8000/v1\"\n  Then: mesh-llm serve     (or: mesh-llm client  for client-only mode)\n\nFlash-MoE SSD backend:\n  Install the plugin:\n    mesh-llm plugins install flash-moe\n  Add [[plugin]] name = \"flash-moe\" with url or plugin-owned args.\n  Then: mesh-llm serve     (or: mesh-llm client  for client-only mode)"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -810,6 +816,9 @@ pub enum Command {
     Serve,
     /// Run as a client-only mesh node with no local model required.
     Client,
+    /// Start the interactive terminal dashboard using the saved runtime configuration.
+    #[command(name = "dashboard", alias = "tui")]
+    Dashboard,
     /// Manage model storage, migration, and update checks.
     Models {
         #[command(subcommand)]
@@ -1261,6 +1270,12 @@ pub enum DoctorCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Diagnose Tailscale connectivity, MeshLLM tags, and bootstrap readiness.
+    Tailscale {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[cfg(test)]
@@ -1409,6 +1424,29 @@ mod tests {
 
         let rendered = err.to_string();
         assert!(rendered.contains("--owner-required"));
+    }
+
+    #[test]
+    fn dashboard_command_parses() {
+        let cli = Cli::try_parse_from(["mesh-llm", "dashboard"])
+            .expect("dashboard command should parse");
+
+        assert!(matches!(cli.command, Some(Command::Dashboard)));
+    }
+
+    #[test]
+    fn doctor_tailscale_parses_with_json_output() {
+        let cli = Cli::try_parse_from(["mesh-llm", "doctor", "tailscale", "--json"])
+            .expect("tailscale doctor command should parse");
+
+        let Some(Command::Doctor { command, json }) = cli.command else {
+            panic!("expected doctor command");
+        };
+        assert!(!json);
+        match command {
+            Some(DoctorCommand::Tailscale { json: true }) => {}
+            other => panic!("unexpected doctor command: {other:?}"),
+        }
     }
 
     #[test]

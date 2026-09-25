@@ -23,6 +23,7 @@ pub(super) fn format_command(command: &Command, assembly: &mut SummaryAssembly) 
         }
         Command::Serve => assembly.command.push_str(" serve"),
         Command::Client => assembly.command.push_str(" client"),
+        Command::Dashboard => assembly.command.push_str(" dashboard"),
         Command::Models { command } => models::format_models(command, assembly),
         Command::Runtime { command } => runtime::format_runtime(command.as_ref(), assembly),
         Command::Plugin { command } => administration::format_plugin(command, assembly),

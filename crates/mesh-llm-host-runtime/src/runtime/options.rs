@@ -214,7 +214,7 @@ impl RuntimeOptions {
     }
 
     pub fn validate_discovery_mode_args(&self) -> anyhow::Result<()> {
-        if self.mesh_discovery_mode != MeshDiscoveryMode::Mdns {
+        if !matches!(self.mesh_discovery_mode, MeshDiscoveryMode::Mdns | MeshDiscoveryMode::Tailscale) {
             return Ok(());
         }
 

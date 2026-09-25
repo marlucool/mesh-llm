@@ -4,6 +4,20 @@ Mesh LLM nodes expose an OpenAI-compatible inference API on `9337` and a
 management API plus optional web console on `3131`. A node can serve models,
 join as an API-only client, or do both.
 
+## Lightweight terminal UI
+
+MeshLLM has a native terminal dashboard separate from the web console:
+
+```bash
+mesh-llm dashboard
+# alias:
+mesh-llm tui
+```
+
+It uses the existing interactive dashboard, so it does not add another web
+server. On a normal interactive terminal it shows the current model, process,
+request, event, and startup state.
+
 ## Try the public mesh
 
 ```bash
@@ -133,6 +147,32 @@ A file-backed token is re-read on every rejoin, so rotating an invite token is
 just replacing the file's contents. That is true for the default file too: any
 file-derived token is re-resolved on each rejoin attempt and is never frozen
 into the running process, so a rotation retires the old token immediately.
+
+### Reconnect after reboot
+
+For workstation use, a successful explicit `--join` is now remembered
+automatically in `~/.mesh-llm/invite.token`. This means you do not have to
+paste the invite token again after restarting the MeshLLM process.
+
+To have MeshLLM start automatically when the machine starts a user session:
+
+```bash
+mesh-llm setup --service
+```
+
+Linux uses a user systemd service, macOS uses a launchd agent, and Windows uses
+a per-user Task Scheduler logon task. The service starts `mesh-llm serve`,
+which reads the remembered token file.
+
+On Linux, enable user lingering when the service must start after boot without
+waiting for an interactive login:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+The remembered token is a credential. Keep `~/.mesh-llm/invite.token` private;
+on Unix the file is written with owner-only permissions.
 
 When neither `--join-file` nor `MESH_LLM_JOIN_FILE` names a file, an
 `invite.token` sitting beside the resolved config file is used automatically —
@@ -325,6 +365,21 @@ mesh-llm auth trust remove <owner-id>
 ```
 
 ## Networking notes
+
+### Tailscale discovery
+
+Tailscale can be used as a private discovery and bootstrap scope instead of public Nostr discovery:
+
+```bash
+mesh-llm serve --auto --mesh-discovery-mode tailscale
+mesh-llm client --auto --mesh-discovery-mode tailscale
+mesh-llm discover --mesh-discovery-mode tailscale
+mesh-llm doctor tailscale
+```
+
+Only online Tailscale peers carrying the explicit `tag:mesh-llm` tag are considered MeshLLM workers. A tailnet IP by itself is not sufficient. Discovery probes each tagged peer's OpenAI API concurrently, tries its IPv4 address before an IPv6 address, and orders reachable peers by measured `/v1/models` latency. Automatic bootstrap still uses the normal MeshLLM invite-token membership layer; the token is never printed by `mesh-llm doctor tailscale` or included in its JSON report.
+
+The Tailscale doctor is intentionally diagnostic rather than a second authentication path. It reports the local Tailscale status, peer/tag counts, reachable tagged peers, and whether each reachable peer exposed the MeshLLM bootstrap endpoint. It does not weaken MeshLLM authentication or treat tailnet membership alone as authorization.
 
 - Discovery uses Nostr relays by default.
 - `--mesh-discovery-mode mdns` is LAN-only discovery and transport startup:

@@ -38,12 +38,6 @@ pub fn plan_setup<P: SetupPrompter>(
         return Err(SetupPlanError::ConflictingServiceFlags);
     }
 
-    if options.service && matches!(environment.platform, SetupPlatform::Windows) {
-        return Err(SetupPlanError::UnsupportedService {
-            platform: environment.platform,
-        });
-    }
-
     let runtime = if options.skip_runtime {
         SetupRuntimePlan::Skip
     } else {

@@ -66,7 +66,9 @@ async fn run_cli_entrypoint() -> anyhow::Result<()> {
     let explicit_surface = normalized_args
         .explicit_surface
         .or(match cli.command.as_ref() {
-            Some(mesh_llm_cli::Command::Serve) => Some(mesh_llm_cli::RuntimeSurface::Serve),
+            Some(mesh_llm_cli::Command::Serve | mesh_llm_cli::Command::Dashboard) => {
+                Some(mesh_llm_cli::RuntimeSurface::Serve)
+            }
             Some(mesh_llm_cli::Command::Client) => Some(mesh_llm_cli::RuntimeSurface::Client),
             _ => None,
         })
@@ -80,7 +82,9 @@ async fn run_cli_entrypoint() -> anyhow::Result<()> {
     if cli.command.as_ref().is_some_and(|c| {
         !matches!(
             c,
-            mesh_llm_cli::Command::Serve | mesh_llm_cli::Command::Client
+            mesh_llm_cli::Command::Serve
+                | mesh_llm_cli::Command::Client
+                | mesh_llm_cli::Command::Dashboard
         )
     }) {
         let family = cli
@@ -604,6 +608,9 @@ fn map_mesh_discovery_mode(
         }
         mesh_llm_cli::MeshDiscoveryMode::Mdns => {
             mesh_llm_host_runtime::discovery::MeshDiscoveryMode::Mdns
+        }
+        mesh_llm_cli::MeshDiscoveryMode::Tailscale => {
+            mesh_llm_host_runtime::discovery::MeshDiscoveryMode::Tailscale
         }
     }
 }
