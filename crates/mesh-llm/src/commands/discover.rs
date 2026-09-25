@@ -262,14 +262,17 @@ async fn run_tailscale_discover(
     }
 
     if auto_join {
-        let peer = &peers[0];
-        let mut out = mesh_llm_events::machine_out();
-        writeln!(out, "{}", peer.api_base_url)?;
-        writeln!(err, "Selected Tailscale MeshLLM peer: {}", peer.hostname)?;
-        writeln!(
-            err,
-            "Tailscale discovery identifies the MeshLLM API endpoint; private mesh joining still uses the existing invite-token authentication."
-        )?;
+        if let Some(peer) = peers.iter().find(|peer| peer.invite_token.is_some()) {
+            let mut out = mesh_llm_events::machine_out();
+            writeln!(out, "{}", peer.invite_token.as_deref().unwrap_or_default())?;
+            writeln!(err, "Selected Tailscale MeshLLM peer: {}", peer.hostname)?;
+        } else {
+            writeln!(err, "No Tailscale MeshLLM peer offered a join bootstrap.")?;
+            writeln!(
+                err,
+                "The peer must run MeshLLM with Tailscale discovery enabled."
+            )?;
+        }
     }
 
     Ok(())
