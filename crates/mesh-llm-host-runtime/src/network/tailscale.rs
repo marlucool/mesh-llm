@@ -8,7 +8,7 @@ use std::time::Duration;
 const DEFAULT_MESH_API_PORT: u16 = 9337;
 const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub(crate) struct TailscaleMeshPeer {
     pub(crate) hostname: String,
     pub(crate) address: String,
