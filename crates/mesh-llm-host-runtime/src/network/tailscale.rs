@@ -15,6 +15,7 @@ pub(crate) struct TailscaleMeshPeer {
     pub(crate) os: Option<String>,
     pub(crate) models: Vec<String>,
     pub(crate) api_base_url: String,
+    pub(crate) invite_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +49,11 @@ struct ModelsResponse {
 #[derive(Debug, Deserialize)]
 struct ModelEntry {
     id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TailscaleJoinResponse {
+    invite_token: String,
 }
 
 pub(crate) async fn discover_mesh_peers(
@@ -105,12 +111,26 @@ pub(crate) async fn discover_mesh_peers(
             Err(_) => continue,
         };
 
+        let invite_token = match client
+            .get(format!("{api_base_url}/api/tailscale/join"))
+            .send()
+            .await
+        {
+            Ok(response) if response.status().is_success() => response
+                .json::<TailscaleJoinResponse>()
+                .await
+                .ok()
+                .map(|body| body.invite_token),
+            _ => None,
+        };
+
         candidates.push(TailscaleMeshPeer {
             hostname,
             address: address.clone(),
             os: peer.os,
             models,
             api_base_url,
+            invite_token,
         });
     }
 
