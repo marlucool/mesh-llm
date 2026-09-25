@@ -240,7 +240,10 @@ async fn run_tailscale_discover(
 
     let mut err = mesh_llm_events::console_err();
     if peers.is_empty() {
-        writeln!(err, "No MeshLLM peers found on the Tailscale tailnet.")?;
+        writeln!(
+            err,
+            "No MeshLLM peers found on the Tailscale tailnet (peers must carry tag:mesh-llm)."
+        )?;
         return Ok(());
     }
 
