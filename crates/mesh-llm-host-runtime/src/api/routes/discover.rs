@@ -78,7 +78,7 @@ pub(super) async fn handle_tailscale_join(
     match tailscale::is_known_tailscale_peer(remote) {
         Ok(true) => {}
         Ok(false) => {
-            respond_error(stream, 403, "Known Tailscale peer required").await?;
+            respond_error(stream, 403, "MeshLLM-tagged Tailscale peer required").await?;
             return Ok(());
         }
         Err(err) => {
