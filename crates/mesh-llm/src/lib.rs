@@ -609,6 +609,9 @@ fn map_mesh_discovery_mode(
         mesh_llm_cli::MeshDiscoveryMode::Mdns => {
             mesh_llm_host_runtime::discovery::MeshDiscoveryMode::Mdns
         }
+        mesh_llm_cli::MeshDiscoveryMode::Tailscale => {
+            mesh_llm_host_runtime::discovery::MeshDiscoveryMode::Tailscale
+        }
     }
 }
 
