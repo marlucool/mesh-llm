@@ -56,6 +56,44 @@ pub(super) async fn handle(stream: &mut TcpStream, state: &MeshApi) -> anyhow::R
     Ok(())
 }
 
+pub(super) async fn handle_tailscale_join(
+    stream: &mut TcpStream,
+    state: &MeshApi,
+) -> anyhow::Result<()> {
+    let mode = {
+        let inner = state.inner.lock().await;
+        inner.mesh_discovery_mode
+    };
+    if mode != discovery::MeshDiscoveryMode::Tailscale {
+        respond_error(
+            stream,
+            404,
+            "Tailscale join is only available in Tailscale discovery mode",
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let remote = stream.peer_addr()?.ip();
+    if !discovery::tailscale::is_tailscale_ip(remote) {
+        respond_error(stream, 403, "Tailscale peer required").await?;
+        return Ok(());
+    }
+
+    let node = {
+        let inner = state.inner.lock().await;
+        inner.node.clone()
+    };
+    let invite_token = node.invite_token().await;
+    respond_json(
+        stream,
+        200,
+        &serde_json::json!({ "invite_token": invite_token }),
+    )
+    .await?;
+    Ok(())
+}
+
 pub(super) async fn handle_lan_details(
     stream: &mut TcpStream,
     state: &MeshApi,
