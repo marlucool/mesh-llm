@@ -15,6 +15,9 @@ pub(crate) struct TailscaleMeshPeer {
     pub(crate) os: Option<String>,
     pub(crate) models: Vec<String>,
     pub(crate) api_base_url: String,
+    /// Used internally by auto-join only; never expose the bootstrap token in
+    /// the general discovery response.
+    #[serde(skip_serializing)]
     pub(crate) invite_token: Option<String>,
 }
 
@@ -190,6 +193,21 @@ mod tests {
 
         assert_eq!(response.data[0].id, "Qwen3-8B");
         assert_eq!(response.data[1].id, "Llama-3");
+    }
+
+    #[test]
+    fn discovery_peer_serialization_does_not_expose_invite_token() {
+        let peer = TailscaleMeshPeer {
+            hostname: "worker".to_string(),
+            address: "100.64.0.2".to_string(),
+            os: Some("linux".to_string()),
+            models: vec!["Qwen3-8B".to_string()],
+            api_base_url: "http://100.64.0.2:9337".to_string(),
+            invite_token: Some("secret-invite-token".to_string()),
+        };
+        let json = serde_json::to_string(&peer).expect("peer should serialize");
+        assert!(!json.contains("secret-invite-token"));
+        assert!(!json.contains("invite_token"));
     }
 
     #[test]
