@@ -75,9 +75,17 @@ pub(super) async fn handle_tailscale_join(
     }
 
     let remote = stream.peer_addr()?.ip();
-    if !discovery::tailscale::is_tailscale_ip(remote) {
-        respond_error(stream, 403, "Tailscale peer required").await?;
-        return Ok(());
+    match tailscale::is_known_tailscale_peer(remote) {
+        Ok(true) => {}
+        Ok(false) => {
+            respond_error(stream, 403, "Known Tailscale peer required").await?;
+            return Ok(());
+        }
+        Err(err) => {
+            tracing::warn!(%err, %remote, "failed to validate Tailscale peer for automatic join");
+            respond_error(stream, 503, "Tailscale trust state unavailable").await?;
+            return Ok(());
+        }
     }
 
     let node = {
