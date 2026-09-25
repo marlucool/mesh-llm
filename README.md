@@ -36,7 +36,20 @@ Finish setup:
 mesh-llm setup
 ```
 
-On Windows PowerShell, use `mesh-llm.exe setup`. *(For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).)*
+On Windows PowerShell, use `mesh-llm.exe setup`. (For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).)
+
+For a worker that should reconnect after a restart, install the background service too:
+
+```bash
+mesh-llm setup --service
+```
+
+A successful explicit `--join <token>` is remembered in
+`~/.mesh-llm/invite.token`, so the service can reuse it after a reboot. Linux
+users who need the service before login can also enable lingering with
+`sudo loginctl enable-linger $USER`. Windows uses a per-user Task Scheduler
+logon task and macOS uses a launchd agent.
+ *(For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).)*
 
 To remove an executable install later, preview the cleanup first:
 
@@ -89,13 +102,36 @@ mesh-llm serve --auto --headless
 | Publish your own mesh | `mesh-llm serve --model Qwen3-8B-Q4_K_M --publish` | [docs/MESHES.md](docs/MESHES.md) |
 | Join by invite token | `mesh-llm serve --join <token>` | [docs/MESHES.md](docs/MESHES.md) |
 | Run an API-only client | `mesh-llm client --auto` | [docs/MESHES.md](docs/MESHES.md) |
+| Use the simple terminal UI | `mesh-llm dashboard` (or `mesh-llm tui`) | [docs/MESHES.md](docs/MESHES.md) |
+| Check why a node is unhealthy | `mesh-llm doctor` (or `mesh-llm check`) | [docs/CLI.md](docs/CLI.md) |
+| Discover private Tailscale peers | `mesh-llm discover --mesh-discovery-mode tailscale` | [docs/networking/tailscale.md](docs/networking/tailscale.md) |
 | Run a big model with splits | `mesh-llm serve --model hf://meshllm/<repo>@<rev> --split` | [docs/SKIPPY_SPLITS.md](docs/SKIPPY_SPLITS.md) |
 | Attach a Flash-MoE SSD backend | `mesh-llm serve` with `[[plugin]] name = "flash-moe"` | [docs/plugins/flash-moe.md](docs/plugins/flash-moe.md) |
 | Fan out one prompt to every model in the mesh | `curl ... -d '{"model":"mesh", ...}'` | [docs/design/MOA_GATEWAY.md](docs/design/MOA_GATEWAY.md) |
 | Use Goose, OpenCode, Claude Code, or Pi | `mesh-llm goose`, `mesh-llm opencode`, `mesh-llm claude`, `mesh-llm pi` | [docs/AGENTS.md](docs/AGENTS.md) |
 | Build or contribute | `just build` | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-## How the mesh works
+## How the mesh works## Friendly command aliases
+
+The original commands remain unchanged, but common actions have shorter
+alternatives:
+
+```text
+mesh-llm start       # same as: mesh-llm serve
+mesh-llm dashboard   # also: mesh-llm tui
+mesh-llm check       # same as: mesh-llm doctor
+mesh-llm upgrade     # same as: mesh-llm update
+```
+
+## Fork maintenance
+
+This fork periodically syncs `main` with
+[Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm). Fork-only changes stay
+in the fork; the sync job never force-pushes `main`. See
+[the fork sync guide](docs/networking/upstream-sync.md) for the conflict
+behavior and manual procedure.
+
+
 
 - **Single-machine fit first.** If one node can host the full model, it serves
   the model locally without stage traffic.
