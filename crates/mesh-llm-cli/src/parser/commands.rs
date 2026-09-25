@@ -34,6 +34,7 @@ pub enum MeshDiscoveryMode {
     #[default]
     Nostr,
     Mdns,
+    Tailscale,
 }
 
 impl MeshDiscoveryMode {
@@ -41,6 +42,7 @@ impl MeshDiscoveryMode {
         match self {
             Self::Nostr => "nostr",
             Self::Mdns => "mdns",
+            Self::Tailscale => "tailscale",
         }
     }
 
@@ -48,6 +50,7 @@ impl MeshDiscoveryMode {
         match self {
             Self::Nostr => "nostr-relay",
             Self::Mdns => "mdns-sd",
+            Self::Tailscale => "tailscale",
         }
     }
 
@@ -55,6 +58,7 @@ impl MeshDiscoveryMode {
         match self {
             Self::Nostr => DiscoveryScope::Public,
             Self::Mdns => DiscoveryScope::Lan,
+            Self::Tailscale => DiscoveryScope::Tailnet,
         }
     }
 }
@@ -64,6 +68,7 @@ impl MeshDiscoveryMode {
 pub enum DiscoveryScope {
     Public,
     Lan,
+    Tailnet,
 }
 
 impl DiscoveryScope {
