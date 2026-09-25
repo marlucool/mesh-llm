@@ -2,7 +2,7 @@ use super::super::{
     MeshApi,
     http::{respond_error, respond_json},
 };
-use crate::network::{discovery, nostr};
+use crate::network::{discovery, nostr, tailscale};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -18,6 +18,15 @@ pub(super) async fn handle(stream: &mut TcpStream, state: &MeshApi) -> anyhow::R
                 Ok(meshes) => serde_json::to_string(&meshes),
                 Err(e) => {
                     respond_error(stream, 500, &format!("Discovery failed: {e}")).await?;
+                    return Ok(());
+                }
+            }
+        }
+        discovery::MeshDiscoveryMode::Tailscale => {
+            match tailscale::discover_mesh_peers(None, std::time::Duration::from_secs(2)).await {
+                Ok(peers) => serde_json::to_string(&peers),
+                Err(e) => {
+                    respond_error(stream, 500, &format!("Tailscale discovery failed: {e}")).await?;
                     return Ok(());
                 }
             }
