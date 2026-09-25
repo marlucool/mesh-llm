@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 use anyhow::{Context, Result};
 use serde_json::{Map, Value, json};
 use std::io::Write;
@@ -6,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use mesh_llm_cli::{BinaryFlavor, DoctorCommand};
 use mesh_llm_host_runtime::command_support::plugin::load_config;
+use mesh_llm_host_runtime::network::tailscale;
 use mesh_llm_host_runtime::command_support::runtime_instances::{
     LocalInstanceSnapshot, runtime_root, scan_local_instances,
 };
@@ -54,6 +58,7 @@ pub(crate) async fn dispatch_doctor_command(
         Some(DoctorCommand::Network { port, json }) => {
             mesh_llm_commands::doctor::run_network_doctor(*port, *json).await
         }
+        Some(DoctorCommand::Tailscale { json }) => run_tailscale_doctor(*json).await,
         None => {
             let config = load_config(config_path)?;
             let native_runtime = config.runtime.native_runtime;
@@ -66,6 +71,107 @@ pub(crate) async fn dispatch_doctor_command(
             )
         }
     }
+}
+
+async fn run_tailscale_doctor(json_output: bool) -> Result<()> {
+    let report = tailscale::doctor(std::time::Duration::from_secs(2)).await;
+    if json_output {
+        let mut out = mesh_llm_events::machine_out();
+        writeln!(out, "{}", serde_json::to_string_pretty(&report)?)?;
+        return Ok(());
+    }
+
+    let mut out = mesh_llm_events::console_out();
+    for line in tailscale_report_lines(&report) {
+        writeln!(out, "{line}")?;
+    }
+    Ok(())
+}
+
+fn tailscale_report_lines(report: &tailscale::TailscaleDoctorReport) -> Vec<String> {
+    if !report.status_ok {
+        return vec![
+            "🩺 Tailscale: unavailable".to_string(),
+            String::new(),
+            format!(
+                "Problem: {}",
+                report
+                    .status_error
+                    .as_deref()
+                    .unwrap_or("tailscale status could not be read")
+            ),
+        ];
+    }
+
+    let self_name = report.self_hostname.as_deref().unwrap_or("unknown");
+    let self_addresses = if report.self_addresses.is_empty() {
+        "no tailnet addresses".to_string()
+    } else {
+        report.self_addresses.join(", ")
+    };
+    let untagged_online = report
+        .online_peer_count
+        .saturating_sub(report.online_tagged_peer_count);
+
+    let mut lines = vec![
+        "🩺 Tailscale: connected".to_string(),
+        String::new(),
+        format!("Self: {self_name} ({self_addresses})"),
+        format!(
+            "Peers: {} total, {} online",
+            report.total_peer_count, report.online_peer_count
+        ),
+        format!(
+            "MeshLLM tag: {} tagged, {} online",
+            report.tagged_peer_count, report.online_tagged_peer_count
+        ),
+        format!("Reachable MeshLLM peers: {}", report.reachable_tagged_peer_count),
+        format!("Bootstrap-ready peers: {}", report.bootstrap_peer_count),
+    ];
+
+    if untagged_online > 0 {
+        lines.push(format!(
+            "Online peers without tag: {untagged_online} (they are intentionally ignored)"
+        ));
+    }
+
+    if let Some(error) = &report.status_error {
+        lines.push(String::new());
+        lines.push(format!("Note: {error}"));
+    }
+
+    if report.peers.is_empty() {
+        lines.push(String::new());
+        lines.push("No MeshLLM-tagged peers are currently visible.".to_string());
+        return lines;
+    }
+
+    lines.push(String::new());
+    lines.push("MeshLLM-tagged peers:".to_string());
+    for peer in &report.peers {
+        let state = if !peer.online {
+            "offline"
+        } else if !peer.reachable {
+            "unreachable"
+        } else {
+            "reachable"
+        };
+        let latency = peer
+            .latency_ms
+            .map(|value| format!(", {value} ms"))
+            .unwrap_or_default();
+        let bootstrap = if peer.bootstrap_available {
+            ", bootstrap ready"
+        } else {
+            ", bootstrap unavailable"
+        };
+        lines.push(format!(
+            "  - {} [{}] {}{}{}, {} model(s)",
+            peer.hostname, peer.address, state, latency, bootstrap, peer.model_count
+        ));
+    }
+
+    lines
 }
 
 async fn run_split_doctor(
@@ -396,11 +502,47 @@ fn split_readiness_short_node_list(items: &[Value]) -> String {
 mod tests {
     use super::{
         SKIPPY_DIAGNOSTIC_ENDPOINTS, capture_skippy_native_log, select_runtime_instance,
-        split_readiness_lines, write_split_readiness_report,
+        split_readiness_lines, tailscale_report_lines, write_split_readiness_report,
     };
     use mesh_llm_host_runtime::command_support::runtime_instances::LocalInstanceSnapshot;
     use serde_json::json;
     use std::path::PathBuf;
+
+    #[test]
+    fn tailscale_report_lines_render_diagnostics_without_bootstrap_tokens() {
+        let report = mesh_llm_host_runtime::network::tailscale::TailscaleDoctorReport {
+            status_ok: true,
+            status_error: None,
+            self_hostname: Some("router".to_string()),
+            self_addresses: vec!["100.64.0.1".to_string()],
+            total_peer_count: 2,
+            online_peer_count: 2,
+            tagged_peer_count: 1,
+            online_tagged_peer_count: 1,
+            reachable_tagged_peer_count: 1,
+            bootstrap_peer_count: 1,
+            peers: vec![
+                mesh_llm_host_runtime::network::tailscale::TailscaleDoctorPeer {
+                    hostname: "worker".to_string(),
+                    address: "100.64.0.2".to_string(),
+                    os: Some("linux".to_string()),
+                    online: true,
+                    reachable: true,
+                    bootstrap_available: true,
+                    latency_ms: Some(6),
+                    model_count: 2,
+                },
+            ],
+        };
+
+        let text = tailscale_report_lines(&report).join("\n");
+
+        assert!(text.contains("Tailscale: connected"));
+        assert!(text.contains("MeshLLM tag: 1 tagged, 1 online"));
+        assert!(text.contains("worker [100.64.0.2] reachable, 6 ms, bootstrap ready, 2 model(s)"));
+        assert!(text.contains("Online peers without tag: 1"));
+        assert!(!text.contains("invite_token"));
+    }
 
     #[test]
     fn split_readiness_lines_show_waiting_guidance() {
