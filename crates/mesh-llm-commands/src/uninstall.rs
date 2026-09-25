@@ -49,6 +49,7 @@ pub enum UninstallStep {
     StopProcesses,
     DisableSystemdUserService,
     ReloadSystemdUser,
+    DeleteWindowsScheduledTask,
     BootoutLaunchdAgent {
         user_id: String,
         plist_path: PathBuf,
@@ -149,7 +150,10 @@ pub fn plan_uninstall(options: &UninstallOptions, env: &UninstallEnvironment) ->
                 purpose: RemovePurpose::LaunchdLogs,
             });
         }
-        UninstallPlatform::Windows | UninstallPlatform::Other => {}
+        UninstallPlatform::Windows => {
+            steps.push(UninstallStep::DeleteWindowsScheduledTask);
+        }
+        UninstallPlatform::Other => {}
     }
     if !options.keep_service_files {
         let service_config_dir = env.config_root.join("mesh-llm");
@@ -257,6 +261,12 @@ where
         UninstallStep::ReloadSystemdUser => {
             run_best_effort(
                 Command::new("systemctl").args(["--user", "daemon-reload"]),
+                outcome,
+            );
+        }
+        UninstallStep::DeleteWindowsScheduledTask => {
+            run_best_effort(
+                Command::new("schtasks.exe").args(["/Delete", "/TN", "mesh-llm", "/F"]),
                 outcome,
             );
         }
@@ -586,6 +596,9 @@ fn step_label(step: &UninstallStep) -> String {
             "disable and stop systemd user service".to_string()
         }
         UninstallStep::ReloadSystemdUser => "reload systemd user units".to_string(),
+        UninstallStep::DeleteWindowsScheduledTask => {
+            "delete Windows mesh-llm scheduled task".to_string()
+        }
         UninstallStep::BootoutLaunchdAgent { .. } => "boot out launchd agent".to_string(),
         UninstallStep::RemovePath { path, purpose } => {
             format!("remove {}: {}", purpose_label(*purpose), path.display())
@@ -673,6 +686,16 @@ mod tests {
             json: false,
             verbose: false,
         }
+    }
+
+    #[test]
+    fn windows_plan_removes_scheduled_start_task() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plan = plan_uninstall(&options(), &env(temp.path(), UninstallPlatform::Windows));
+
+        assert!(plan
+            .steps
+            .contains(&UninstallStep::DeleteWindowsScheduledTask));
     }
 
     #[test]
