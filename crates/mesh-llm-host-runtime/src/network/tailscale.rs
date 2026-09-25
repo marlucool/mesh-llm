@@ -66,6 +66,20 @@ pub(crate) fn is_tailscale_ip(ip: std::net::IpAddr) -> bool {
     }
 }
 
+/// Return whether an address is currently assigned to a peer known by the local
+/// Tailscale control plane. This is deliberately stronger than checking whether
+/// an address falls inside Tailscale's IPv4 CGNAT range: a CGNAT address alone is
+/// not proof that the TCP caller is a tailnet member.
+pub(crate) fn is_known_tailscale_peer(ip: std::net::IpAddr) -> Result<bool> {
+    let status = read_status()?;
+    let matches = |peer: &TailscalePeer| {
+        peer.addresses.iter()
+            .filter_map(|address| address.parse::<std::net::IpAddr>().ok())
+            .any(|address| address == ip)
+    };
+    Ok(matches(&status.self_peer) || status.peers.values().any(matches))
+}
+
 pub(crate) async fn discover_mesh_peers(
     target_name: Option<&str>,
     timeout: Duration,
