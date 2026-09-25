@@ -66,20 +66,25 @@ pub(super) async fn maybe_discover_join_candidates(
             .inspect_err(|_| {
                 record_discovery_operational_event(DiscoveryOperationalEvent::DiscoveryFailed);
             })?;
-            if peers.is_empty() {
+            let mut joinable_peers = 0usize;
+            for peer in peers {
+                let _ = emit_event(OutputEvent::MeshFound {
+                    mesh: peer.hostname.clone(),
+                    peers: 1,
+                    region: None,
+                });
+                if let Some(token) = peer.invite_token {
+                    auto_join_candidates.push((token, Some(peer.hostname)));
+                    joinable_peers += 1;
+                }
+            }
+
+            if joinable_peers == 0 {
                 record_discovery_operational_event(DiscoveryOperationalEvent::DiscoveryFailed);
                 let _ = emit_event(OutputEvent::DiscoveryFailed {
-                    message: "No MeshLLM peers found on the Tailscale tailnet".to_string(),
-                    detail: Some("Tailscale discovery finds reachable MeshLLM API endpoints; private mesh joining still requires an invite token.".to_string()),
+                    message: "No Tailscale MeshLLM peer offered a join bootstrap".to_string(),
+                    detail: Some("The peer must run MeshLLM with Tailscale discovery enabled and be reachable through the tailnet.".to_string()),
                 });
-            } else {
-                for peer in peers {
-                    let _ = emit_event(OutputEvent::MeshFound {
-                        mesh: peer.hostname,
-                        peers: 1,
-                        region: None,
-                    });
-                }
             }
         }
         mesh_discovery::MeshDiscoveryMode::Mdns => {
