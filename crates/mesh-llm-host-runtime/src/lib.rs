@@ -14,7 +14,7 @@ pub mod inference;
 mod logging;
 mod mesh;
 pub mod models;
-mod network;
+pub mod network;
 pub mod plugin;
 mod plugins;
 mod protocol;
