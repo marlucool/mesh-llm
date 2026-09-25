@@ -76,6 +76,7 @@ impl DiscoveryScope {
         match self {
             Self::Public => "public",
             Self::Lan => "lan",
+            Self::Tailnet => "tailnet",
         }
     }
 }
@@ -1266,6 +1267,12 @@ pub enum DoctorCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Diagnose Tailscale connectivity, MeshLLM tags, and bootstrap readiness.
+    Tailscale {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[cfg(test)]
@@ -1414,6 +1421,21 @@ mod tests {
 
         let rendered = err.to_string();
         assert!(rendered.contains("--owner-required"));
+    }
+
+    #[test]
+    fn doctor_tailscale_parses_with_json_output() {
+        let cli = Cli::try_parse_from(["mesh-llm", "doctor", "tailscale", "--json"])
+            .expect("tailscale doctor command should parse");
+
+        let Some(Command::Doctor { command, json }) = cli.command else {
+            panic!("expected doctor command");
+        };
+        assert!(!json);
+        match command {
+            Some(DoctorCommand::Tailscale { json: true }) => {}
+            other => panic!("unexpected doctor command: {other:?}"),
+        }
     }
 
     #[test]
