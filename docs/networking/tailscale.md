@@ -60,6 +60,10 @@ the MeshLLM API normally needs TCP port `9337`:
 
 The exact `tagOwners` entry should follow your existing tailnet ownership
 policy; the example above leaves tag management to tailnet administrators.
+
+Use this tag for MeshLLM service machines rather than ordinary end-user devices.
+Tailscale documents tags as identities for non-human devices, and a tagged device
+cannot simultaneously retain a user identity. See the [Tailscale tags documentation](https://tailscale.com/docs/features/tags).
 Tailscale tags are intended for non-human devices and also identify the device
 for access-control purposes. See the [Tailscale tags documentation](https://tailscale.com/docs/features/tags).
 
