@@ -254,12 +254,17 @@ async fn run_tailscale_discover(
         } else {
             peer.models.join(", ")
         };
+        let probe = peer
+            .latency_ms
+            .map(|value| format!("{value} ms"))
+            .unwrap_or_else(|| "unmeasured".to_string());
         writeln!(
             err,
-            "  [{}] {}  {}  models: {}",
+            "  [{}] {}  {}  probe: {}  models: {}",
             i + 1,
             peer.hostname,
             peer.api_base_url,
+            probe,
             models
         )?;
     }
