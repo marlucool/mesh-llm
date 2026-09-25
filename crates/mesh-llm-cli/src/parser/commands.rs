@@ -816,6 +816,9 @@ pub enum Command {
     Serve,
     /// Run as a client-only mesh node with no local model required.
     Client,
+    /// Start the interactive terminal dashboard using the saved runtime configuration.
+    #[command(name = "dashboard", alias = "tui")]
+    Dashboard,
     /// Manage model storage, migration, and update checks.
     Models {
         #[command(subcommand)]
