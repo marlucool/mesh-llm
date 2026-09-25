@@ -1118,7 +1118,25 @@ pub(super) async fn run_auto_join_existing_mesh(
         auto_join_candidates.to_vec()
     };
     let prefer_fast_probe = should_prefer_fast_auto_join(options, auto_join_candidates);
+    let explicit_join_requested = !options.join.is_empty();
     let outcome = attempt_run_auto_join(node, &join_attempts, prefer_fast_probe).await;
+
+    if explicit_join_requested
+        && let Some((token, _)) = outcome.successful_join.as_ref()
+        && !join_sources::file_backed_join_tokens(options).contains(token)
+    {
+        match join_sources::persist_join_token(options.config.as_deref(), token) {
+            Ok(path) => tracing::info!(
+                path = %path.display(),
+                "Persisted explicit mesh join token for automatic reconnect"
+            ),
+            Err(error) => tracing::warn!(
+                error = %error,
+                "Joined mesh successfully, but could not persist the explicit join token"
+            ),
+        }
+    }
+
     update_cli_with_successful_run_auto_join(options, outcome.successful_join);
 
     if !outcome.joined {
