@@ -44,11 +44,11 @@ For a worker that should reconnect after a restart, install the background servi
 mesh-llm setup --service
 ```
 
-A successful join—whether from an invite token or automatic discovery—is remembered in
-`~/.mesh-llm/invite.token`, so the service can reuse it after a reboot. Linux
-users who need the service before login can also enable lingering with
-`sudo loginctl enable-linger $USER`. Windows uses a per-user Task Scheduler
-logon task and macOS uses a launchd agent.*
+An explicit invite-token join is remembered in `~/.mesh-llm/invite.token`, so
+the service can reuse it after a reboot. Discovery bootstrap credentials are not
+persisted automatically. Linux users who need the service before login can also
+enable lingering with `sudo loginctl enable-linger $USER`. Windows uses a
+per-user Task Scheduler logon task and macOS uses a launchd agent.
 
 To remove an executable install later, preview the cleanup first:
 
@@ -110,7 +110,9 @@ mesh-llm serve --auto --headless
 | Use Goose, OpenCode, Claude Code, or Pi | `mesh-llm goose`, `mesh-llm opencode`, `mesh-llm claude`, `mesh-llm pi` | [docs/AGENTS.md](docs/AGENTS.md) |
 | Build or contribute | `just build` | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-## How the mesh works## Friendly command aliases
+## How the mesh works
+
+## Friendly command aliases
 
 The original commands remain unchanged, but common actions have shorter
 alternatives:
