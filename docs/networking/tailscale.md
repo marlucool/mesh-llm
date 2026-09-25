@@ -29,6 +29,61 @@ inference. Tailscale provides private IP connectivity between the hosts.
 This is preferable to making MeshLLM depend on Tailscale because the same
 MeshLLM binary continues to work on ordinary networks.
 
+## MeshLLM authorization tag
+
+
+When Tailscale discovery mode is enabled, MeshLLM only considers peers that
+carry the dedicated non-human-device tag `tag:mesh-llm`. This is an application
+authorization boundary in addition to ordinary Tailscale network connectivity.
+A device being a member of the tailnet, or merely having a 100.x Tailscale IP,
+does not make it an automatic MeshLLM worker.
+
+Assign `tag:mesh-llm` to each machine that is intended to run MeshLLM. Keep the
+tag in the tailnet policy under `tagOwners`, and grant the tag only the network
+access required by the MeshLLM deployment. For discovery and automatic join,
+the MeshLLM API normally needs TCP port `9337`:
+
+```jsonc
+{
+  "tagOwners": {
+    "tag:mesh-llm": []
+  },
+  "grants": [
+    {
+      "src": ["tag:mesh-llm"],
+      "dst": ["tag:mesh-llm"],
+      "ip": ["tcp:9337"]
+    }
+  ]
+}
+```
+
+The exact `tagOwners` entry should follow your existing tailnet ownership
+policy; the example above leaves tag management to tailnet administrators.
+Tailscale tags are intended for non-human devices and also identify the device
+for access-control purposes. citeturn758209search6turn758209search5
+
+MeshLLM checks the local Tailscale control-plane peer state before returning its
+automatic join bootstrap token. The caller must both match a currently known
+Tailscale peer address and carry `tag:mesh-llm`. The normal MeshLLM invite-token
+and membership system remains the second authentication layer.
+
+This means the intended trust chain is:
+
+```text
+Tailscale connectivity
+        ↓
+`tag:mesh-llm` authorization
+        ↓
+MeshLLM automatic bootstrap
+        ↓
+existing MeshLLM invite-token authentication
+        ↓
+normal mesh membership
+```
+
+Tailscale's GitHub Action follows the same principle: CI runners receive an
+explicit tag and are governed by the grants attached to that tag. citeturn758209search0turn758209search3
 ## Tailscale addresses
 
 When diagnosing a node, check its Tailscale IPv4 address with:
