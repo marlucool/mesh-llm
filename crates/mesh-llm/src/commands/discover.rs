@@ -3,6 +3,7 @@ use std::io::Write;
 use anyhow::Result;
 
 use mesh_llm_host_runtime::command_support::discovery::{self, nostr};
+use mesh_llm_host_runtime::network::tailscale;
 use mesh_llm_system::backend;
 
 pub(crate) struct DiscoverOptions {
@@ -34,6 +35,7 @@ pub(crate) async fn run_discover(options: DiscoverOptions) -> Result<()> {
         mesh_llm_cli::MeshDiscoveryMode::Nostr => {
             run_nostr_discover(filter, options.auto_join, options.relays).await
         }
+        mesh_llm_cli::MeshDiscoveryMode::Tailscale => run_tailscale_discover(filter, options.auto_join).await,
         mesh_llm_cli::MeshDiscoveryMode::Mdns => {
             run_lan_discover(filter, options.auto_join, options.supplied_join_tokens).await
         }
@@ -222,6 +224,51 @@ async fn run_lan_discover(
         writeln!(
             err,
             "  mesh-llm --join <token> discover --mesh-discovery-mode mdns --auto"
+        )?;
+    }
+
+    Ok(())
+}
+
+async fn run_tailscale_discover(
+    filter: nostr::MeshFilter,
+    auto_join: bool,
+) -> Result<()> {
+    let target = filter.name.as_deref();
+    let peers =
+        tailscale::discover_mesh_peers(target, std::time::Duration::from_secs(2)).await?;
+
+    let mut err = mesh_llm_events::console_err();
+    if peers.is_empty() {
+        writeln!(err, "No MeshLLM peers found on the Tailscale tailnet.")?;
+        return Ok(());
+    }
+
+    writeln!(err, "Found {} MeshLLM peer(s) on Tailscale:\n", peers.len())?;
+    for (i, peer) in peers.iter().enumerate() {
+        let models = if peer.models.is_empty() {
+            "(no models loaded)".to_string()
+        } else {
+            peer.models.join(", ")
+        };
+        writeln!(
+            err,
+            "  [{}] {}  {}  models: {}",
+            i + 1,
+            peer.hostname,
+            peer.api_base_url,
+            models
+        )?;
+    }
+
+    if auto_join {
+        let peer = &peers[0];
+        let mut out = mesh_llm_events::machine_out();
+        writeln!(out, "{}", peer.api_base_url)?;
+        writeln!(err, "Selected Tailscale MeshLLM peer: {}", peer.hostname)?;
+        writeln!(
+            err,
+            "Tailscale discovery identifies the MeshLLM API endpoint; private mesh joining still uses the existing invite-token authentication."
         )?;
     }
 
