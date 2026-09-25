@@ -813,11 +813,12 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Serve local models and join or publish a mesh.
+    #[command(visible_alias = "start")]
     Serve,
     /// Run as a client-only mesh node with no local model required.
     Client,
     /// Start the interactive terminal dashboard using the saved runtime configuration.
-    #[command(name = "dashboard", alias = "tui")]
+    #[command(name = "dashboard", visible_alias = "tui")]
     Dashboard,
     /// Manage model storage, migration, and update checks.
     Models {
@@ -833,6 +834,7 @@ pub enum Command {
         draft: bool,
     },
     /// Update mesh-llm to a bundled release and exit.
+    #[command(visible_alias = "upgrade")]
     Update {
         /// Install this specific release tag or version (e.g. v0.60.0 or 0.60.0-rc.1).
         #[arg(long)]
@@ -869,6 +871,7 @@ pub enum Command {
         command: AnalyticsCommand,
     },
     /// Diagnose local mesh, runtime, and split-readiness problems.
+    #[command(visible_alias = "check")]
     Doctor {
         /// Print machine-readable JSON for the default doctor report.
         #[arg(long)]
@@ -1432,6 +1435,30 @@ mod tests {
             .expect("dashboard command should parse");
 
         assert!(matches!(cli.command, Some(Command::Dashboard)));
+    }
+
+    #[test]
+    fn friendly_command_aliases_parse() {
+        assert!(matches!(
+            Cli::try_parse_from(["mesh-llm", "start"]).expect("start alias should parse").command,
+            Some(Command::Serve)
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["mesh-llm", "tui"]).expect("tui alias should parse").command,
+            Some(Command::Dashboard)
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["mesh-llm", "check"])
+                .expect("check alias should parse")
+                .command,
+            Some(Command::Doctor { command: None, .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["mesh-llm", "upgrade"])
+                .expect("upgrade alias should parse")
+                .command,
+            Some(Command::Update { .. })
+        ));
     }
 
     #[test]
