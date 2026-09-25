@@ -91,3 +91,4 @@ jobs:
       - name: Enforce website result
         if: ${{ steps.validate.outcome != 'success' }}
         run: exit 1
+# Protected lane definition refreshed with the current runner-image cohort.
