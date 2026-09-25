@@ -148,6 +148,32 @@ just replacing the file's contents. That is true for the default file too: any
 file-derived token is re-resolved on each rejoin attempt and is never frozen
 into the running process, so a rotation retires the old token immediately.
 
+### Reconnect after reboot
+
+For workstation use, a successful explicit `--join` is now remembered
+automatically in `~/.mesh-llm/invite.token`. This means you do not have to
+paste the invite token again after restarting the MeshLLM process.
+
+To have MeshLLM start automatically when the machine starts a user session:
+
+```bash
+mesh-llm setup --service
+```
+
+Linux uses a user systemd service, macOS uses a launchd agent, and Windows uses
+a per-user Task Scheduler logon task. The service starts `mesh-llm serve`,
+which reads the remembered token file.
+
+On Linux, enable user lingering when the service must start after boot without
+waiting for an interactive login:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+The remembered token is a credential. Keep `~/.mesh-llm/invite.token` private;
+on Unix the file is written with owner-only permissions.
+
 When neither `--join-file` nor `MESH_LLM_JOIN_FILE` names a file, an
 `invite.token` sitting beside the resolved config file is used automatically —
 `~/.mesh-llm/invite.token` by default, or beside `MESH_LLM_CONFIG=<path>` in a
