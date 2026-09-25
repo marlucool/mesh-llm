@@ -326,6 +326,21 @@ mesh-llm auth trust remove <owner-id>
 
 ## Networking notes
 
+### Tailscale discovery
+
+Tailscale can be used as a private discovery and bootstrap scope instead of public Nostr discovery:
+
+```bash
+mesh-llm serve --auto --mesh-discovery-mode tailscale
+mesh-llm client --auto --mesh-discovery-mode tailscale
+mesh-llm discover --mesh-discovery-mode tailscale
+mesh-llm doctor tailscale
+```
+
+Only online Tailscale peers carrying the explicit `tag:mesh-llm` tag are considered MeshLLM workers. A tailnet IP by itself is not sufficient. Discovery probes each tagged peer's OpenAI API concurrently, tries its IPv4 address before an IPv6 address, and orders reachable peers by measured `/v1/models` latency. Automatic bootstrap still uses the normal MeshLLM invite-token membership layer; the token is never printed by `mesh-llm doctor tailscale` or included in its JSON report.
+
+The Tailscale doctor is intentionally diagnostic rather than a second authentication path. It reports the local Tailscale status, peer/tag counts, reachable tagged peers, and whether each reachable peer exposed the MeshLLM bootstrap endpoint. It does not weaken MeshLLM authentication or treat tailnet membership alone as authorization.
+
 - Discovery uses Nostr relays by default.
 - `--mesh-discovery-mode mdns` is LAN-only discovery and transport startup:
   it does not contact Nostr relays, does not register with public iroh relays,
