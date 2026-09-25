@@ -90,9 +90,10 @@ fn install_windows_service(
         ));
     }
     messages.push(format!("Command: {task_command}"));
-    messages.push(format!(
+    messages.push(
         "Join state: ~/.mesh-llm/invite.token is used automatically after an explicit --join"
-    ));
+            .to_string(),
+    );
     messages.push(format!(
         "Edit startup models: {}",
         paths.mesh_config_file.display()
