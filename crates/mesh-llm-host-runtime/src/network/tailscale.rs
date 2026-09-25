@@ -9,16 +9,16 @@ const DEFAULT_MESH_API_PORT: u16 = 9337;
 const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
-pub(crate) struct TailscaleMeshPeer {
-    pub(crate) hostname: String,
-    pub(crate) address: String,
-    pub(crate) os: Option<String>,
-    pub(crate) models: Vec<String>,
-    pub(crate) api_base_url: String,
+pub struct TailscaleMeshPeer {
+    pub hostname: String,
+    pub address: String,
+    pub os: Option<String>,
+    pub models: Vec<String>,
+    pub api_base_url: String,
     /// Used internally by auto-join only; never expose the bootstrap token in
     /// the general discovery response.
     #[serde(skip_serializing)]
-    pub(crate) invite_token: Option<String>,
+    pub invite_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,7 +83,7 @@ pub(crate) fn is_known_tailscale_peer(ip: std::net::IpAddr) -> Result<bool> {
     Ok(matches(&status.self_peer) || status.peers.values().any(matches))
 }
 
-pub(crate) async fn discover_mesh_peers(
+pub async fn discover_mesh_peers(
     target_name: Option<&str>,
     timeout: Duration,
 ) -> Result<Vec<TailscaleMeshPeer>> {
