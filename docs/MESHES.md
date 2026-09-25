@@ -4,6 +4,20 @@ Mesh LLM nodes expose an OpenAI-compatible inference API on `9337` and a
 management API plus optional web console on `3131`. A node can serve models,
 join as an API-only client, or do both.
 
+## Lightweight terminal UI
+
+MeshLLM has a native terminal dashboard separate from the web console:
+
+```bash
+mesh-llm dashboard
+# alias:
+mesh-llm tui
+```
+
+It uses the existing interactive dashboard, so it does not add another web
+server. On a normal interactive terminal it shows the current model, process,
+request, event, and startup state.
+
 ## Try the public mesh
 
 ```bash
