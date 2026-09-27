@@ -89,7 +89,7 @@ mesh-llm client --auto
 Use this to finish a fresh install after the executable is on your `PATH`.
 
 `mesh-llm setup` downloads and configures the native runtime, can install and
-enable the background service on supported macOS and Linux machines, and only
+enable the per-user background service on Linux, macOS, and Windows, and only
 shows the GitHub star prompt when it is interactive and eligible. The star
 prompt defaults to Yes, and `--yes` or `--no-interactive` skip it without
 starring anything. Default output is concise; use `--verbose` when you want
