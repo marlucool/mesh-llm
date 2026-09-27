@@ -30,6 +30,8 @@ pub(crate) fn write_service_runner(
     service_runner: &Path,
     binary_path: &Path,
     env_file: &Path,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
 ) -> Result<()> {
     let parent = service_runner.parent().ok_or_else(|| {
         anyhow!(
@@ -38,7 +40,15 @@ pub(crate) fn write_service_runner(
         )
     })?;
     fs::create_dir_all(parent)?;
-    fs::write(service_runner, render_service_runner(binary_path, env_file))?;
+    fs::write(
+        service_runner,
+        render_service_runner(
+            binary_path,
+            env_file,
+            service_auto,
+            service_mesh_discovery_mode,
+        ),
+    )?;
     set_runner_permissions(service_runner)?;
     Ok(())
 }
