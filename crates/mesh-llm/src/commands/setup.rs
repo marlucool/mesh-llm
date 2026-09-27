@@ -27,6 +27,8 @@ fn setup_command_args<'a>(
         no_interactive,
         service,
         no_service,
+        auto,
+        mesh_discovery_mode,
         skip_runtime,
         verbose,
     } = cmd
@@ -43,6 +45,8 @@ fn setup_command_args<'a>(
             skip_runtime: *skip_runtime,
             verbose: *verbose,
         },
+        service_auto: *auto,
+        service_mesh_discovery_mode: mesh_discovery_mode.map(mesh_llm_cli::MeshDiscoveryMode::as_str),
         environment: SetupEnvironment {
             platform: current_setup_platform()?,
             interactive: std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
@@ -79,6 +83,8 @@ mod tests {
                 skip_runtime: true,
                 verbose: true,
             },
+            service_auto: true,
+            service_mesh_discovery_mode: Some("tailscale"),
             mesh_llm_commands::runtime_native::NativeRuntimeConfigSelection::default(),
         )
         .expect("setup args should build");
