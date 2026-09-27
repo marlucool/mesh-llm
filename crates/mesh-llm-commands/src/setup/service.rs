@@ -55,15 +55,7 @@ fn install_windows_service(
     fs::create_dir_all(&paths.service_config_dir)?;
     ensure_service_env_file(&paths.service_env_file)?;
 
-    let runtime_args = super::service_templates::render_service_runtime_args(
-        service_auto,
-        service_mesh_discovery_mode,
-    );
-    let task_command = if runtime_args.is_empty() {
-        format!("\"{}\" serve", context.binary_path.display())
-    } else {
-        format!("\"{}\" serve {runtime_args}", context.binary_path.display())
-    };
+    let task_command = format!("\"{}\" serve", context.binary_path.display());
     runner
         .run(&ServiceCommand::new(
             "schtasks.exe",
@@ -100,7 +92,9 @@ fn install_windows_service(
             "Installed and started Windows logon task: {WINDOWS_TASK_NAME}"
         ));
     } else {
-        messages.push(format!("Installed Windows logon task: {WINDOWS_TASK_NAME}"));
+        messages.push(format!(
+            "Installed Windows logon task: {WINDOWS_TASK_NAME}"
+        ));
         messages.push(format!(
             "Start it with: schtasks.exe /Run /TN {WINDOWS_TASK_NAME}"
         ));
@@ -149,8 +143,6 @@ fn install_systemd_service(
             &context.binary_path,
             &paths.service_env_file,
             &paths.mesh_config_file,
-            service_auto,
-            service_mesh_discovery_mode,
         ),
     )?;
 
@@ -193,10 +185,8 @@ fn install_systemd_service(
         false
     };
 
-    let runtime_args = super::service_templates::render_service_runtime_args(
-        service_auto,
-        service_mesh_discovery_mode,
-    );
+    let runtime_args =
+        super::service_templates::render_service_runtime_args(service_auto, service_mesh_discovery_mode);
     let exec_line = if runtime_args.is_empty() {
         format!("ExecStart={} serve", shell_quote(&context.binary_path))
     } else {
