@@ -80,11 +80,11 @@ mod tests {
                 no_interactive: false,
                 service: true,
                 no_service: false,
+                auto: true,
+                mesh_discovery_mode: Some(mesh_llm_cli::MeshDiscoveryMode::Tailscale),
                 skip_runtime: true,
                 verbose: true,
             },
-            service_auto: true,
-            service_mesh_discovery_mode: Some("tailscale"),
             mesh_llm_commands::runtime_native::NativeRuntimeConfigSelection::default(),
         )
         .expect("setup args should build");
@@ -100,6 +100,8 @@ mod tests {
                 verbose: true,
             }
         );
+        assert!(args.service_auto);
+        assert_eq!(args.service_mesh_discovery_mode, Some("tailscale"));
     }
 
     #[test]
