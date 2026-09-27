@@ -281,7 +281,10 @@ function Complete-Sha256 {
 }
 
 function Get-DeterministicTreeSha256 {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [System.StringComparer]$Comparer = [System.StringComparer]::Ordinal
+    )
 
     $hasher = [System.Security.Cryptography.SHA256]::Create()
     try {
@@ -296,7 +299,7 @@ function Get-DeterministicTreeSha256 {
             $filesByRelativePath[$relative] = $file.FullName
         }
         [string[]]$relativePaths = @($filesByRelativePath.Keys)
-        [Array]::Sort($relativePaths, [StringComparer]::Ordinal)
+        [Array]::Sort($relativePaths, $Comparer)
         foreach ($relative in $relativePaths) {
             $relativeBytes = [System.Text.Encoding]::UTF8.GetBytes($relative)
             $relativeLength = Convert-UInt64ToBigEndianBytes ([UInt64]$relativeBytes.Length)
@@ -448,7 +451,16 @@ function Assert-ProductBundle {
     }
     $actualRuntimeSha256 = Get-DeterministicTreeSha256 -Path $runtimeSource
     if ($actualRuntimeSha256 -ne $runtimeSha256) {
-        throw "runtime.sha256 mismatch: expected $runtimeSha256, got $actualRuntimeSha256"
+        # Windows bundles created before the cross-platform tree-hash ordering
+        # fix used case-insensitive ordering. Accept that legacy ordering only
+        # after the archive, host, runtime manifest, and per-file hashes above
+        # have already been verified.
+        $legacyRuntimeSha256 = Get-DeterministicTreeSha256 -Path $runtimeSource -Comparer ([System.StringComparer]::OrdinalIgnoreCase)
+        if ($legacyRuntimeSha256 -eq $runtimeSha256) {
+            Write-Warning "legacy Windows runtime tree ordering detected; accepting the published product-manifest hash for compatibility"
+        } else {
+            throw "runtime.sha256 mismatch: expected $runtimeSha256, got $actualRuntimeSha256"
+        }
     }
 
     return [PSCustomObject]@{
