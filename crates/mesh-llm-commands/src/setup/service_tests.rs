@@ -116,8 +116,6 @@ fn launchd_runner_escapes_shell_specials_in_paths() {
     let rendered = render_service_runner(
         &PathBuf::from("/Users/example/mesh \"bin\"/$HOME/`mesh`/mesh-llm"),
         &PathBuf::from("/Users/example/config\\dir/service.env"),
-        false,
-        None,
     );
 
     assert!(
@@ -161,8 +159,7 @@ fn windows_service_install_registers_logon_task() {
     };
     let mut runner = FakeRunner::default();
 
-    let report = install_service(&context, &mut runner, false, None)
-        .expect("Windows service install should succeed");
+    let report = install_service(&context, &mut runner, false, None).expect("Windows service install should succeed");
 
     assert_eq!(report.status, ServiceInstallStatus::Started);
     assert_eq!(report.summary, "installed and started");
@@ -209,8 +206,7 @@ fn linux_service_install_writes_systemd_files_and_runs_expected_commands() {
     };
     let mut runner = FakeRunner::default();
 
-    let report = install_service(&context, &mut runner, false, None)
-        .expect("systemd install should succeed");
+    let report = install_service(&context, &mut runner, false, None).expect("systemd install should succeed");
 
     assert_eq!(report.summary, "installed and started");
     assert_eq!(report.status, ServiceInstallStatus::Started);
@@ -240,8 +236,6 @@ fn systemd_unit_escapes_percent_in_environment_file_path() {
         &PathBuf::from("/Users/example/.local/bin/mesh-llm"),
         &PathBuf::from("/Users/example/.config/mesh-llm/%service.env"),
         &PathBuf::from("/Users/example/.mesh-llm/config.toml"),
-        false,
-        None,
     );
 
     assert!(rendered.contains("EnvironmentFile=-/Users/example/.config/mesh-llm/%%service.env"));
@@ -272,8 +266,7 @@ fn macos_service_install_writes_runner_and_plist_and_preserves_manual_start_guid
     };
     let mut runner = FakeRunner::default();
 
-    let report = install_service(&context, &mut runner, false, None)
-        .expect("launchd install should succeed");
+    let report = install_service(&context, &mut runner, false, None).expect("launchd install should succeed");
 
     assert_eq!(
         report.summary,
@@ -323,8 +316,8 @@ fn linux_service_command_failure_is_a_setup_failure_when_starting_service() {
         "systemd user manager unavailable",
     );
 
-    let error = install_service(&context, &mut runner, false, None)
-        .expect_err("systemd enable failure should fail");
+    let error =
+        install_service(&context, &mut runner, false, None).expect_err("systemd enable failure should fail");
 
     assert!(
         error
@@ -355,8 +348,8 @@ fn macos_service_command_failure_is_a_setup_failure_when_starting_service() {
     let mut runner = FakeRunner::default();
     runner.fail_once("launchctl bootstrap gui/501", "launchd bootstrap denied");
 
-    let error = install_service(&context, &mut runner, false, None)
-        .expect_err("launchd bootstrap failure should fail");
+    let error =
+        install_service(&context, &mut runner, false, None).expect_err("launchd bootstrap failure should fail");
 
     assert!(
         error
