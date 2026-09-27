@@ -63,6 +63,8 @@ pub(crate) fn shell_quote(path: &Path) -> String {
     format!("\"{escaped}\"")
 }
 
+// Only Unix has an execute bit to set on the runner.
+#[cfg_attr(not(unix), allow(unused_variables))]
 fn set_runner_permissions(service_runner: &Path) -> Result<()> {
     #[cfg(unix)]
     {
