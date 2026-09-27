@@ -114,7 +114,7 @@ Switches:
 - `--skip-runtime`: skip downloading or configuring the native runtime.
 - `--verbose`: print detailed service paths, commands, log locations, and setup status.
 
-On Windows, `--service` is unsupported.
+On Windows, `--service` installs a per-user Task Scheduler logon task.
 
 ### `uninstall`
 
