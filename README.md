@@ -112,8 +112,6 @@ mesh-llm serve --auto --headless
 | Use Goose, OpenCode, Claude Code, or Pi | `mesh-llm goose`, `mesh-llm opencode`, `mesh-llm claude`, `mesh-llm pi` | [docs/AGENTS.md](docs/AGENTS.md) |
 | Build or contribute | `just build` | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-## How the mesh works
-
 ## Friendly command aliases
 
 The original commands remain unchanged, but common actions have shorter
