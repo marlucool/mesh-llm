@@ -262,11 +262,11 @@ Prefer exact entries returned by `mesh-llm models installed --json`, inspect
 their reported path and total size, and use `models show` for fit/capabilities.
 Prefer complete cached models before proposing any large download.
 
-`models installed --json` currently enumerates individual layer-package and
-split-shard files as separate entries (tracked as a bug: mesh should group
-these under one package ref). On a machine with cached Skippy packages this can
-be dozens of rows that are not independently runnable. Filter before you show
-anything to the user:
+`models installed --json` groups layer-package files and split-shard files
+under their canonical package reference. A cached Skippy package therefore
+appears as one model entry rather than one row per internal fragment. Keep
+using the reported path, total size, and model capabilities when deciding
+whether an entry is independently runnable.
 
 - Exclude split fragments and package internals: refs ending in `-layers` (or
   containing `/layers/` or `/shared/`), and any `layer-*.gguf`, `shared/*.gguf`,
