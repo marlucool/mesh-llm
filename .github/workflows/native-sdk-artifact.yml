@@ -210,7 +210,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:0d4e98e62d9e06419e87e1b1d10020a2eb2b0584086aa983795e1c5f2d933dd7
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d
     defaults:
       run:
         shell: bash
@@ -255,7 +255,7 @@ jobs:
       - name: Resolve static ABI toolchain epoch
         uses: ./.github/actions/resolve-native-toolchain-epoch
         with:
-          pinned_epoch: mesh-llm-cuda-runner-sha256-0d4e98e62d9e06419e87e1b1d10020a2eb2b0584086aa983795e1c5f2d933dd7
+          pinned_epoch: mesh-llm-cuda-runner-sha256-8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d
 
       - uses: ./.github/actions/configure-sccache-gha
         with:
