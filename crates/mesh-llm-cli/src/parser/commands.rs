@@ -1437,8 +1437,8 @@ mod tests {
 
     #[test]
     fn dashboard_command_parses() {
-        let cli =
-            Cli::try_parse_from(["mesh-llm", "dashboard"]).expect("dashboard command should parse");
+        let cli = Cli::try_parse_from(["mesh-llm", "dashboard"])
+            .expect("dashboard command should parse");
 
         assert!(matches!(cli.command, Some(Command::Dashboard)));
     }
@@ -1446,15 +1446,11 @@ mod tests {
     #[test]
     fn friendly_command_aliases_parse() {
         assert!(matches!(
-            Cli::try_parse_from(["mesh-llm", "start"])
-                .expect("start alias should parse")
-                .command,
+            Cli::try_parse_from(["mesh-llm", "start"]).expect("start alias should parse").command,
             Some(Command::Serve)
         ));
         assert!(matches!(
-            Cli::try_parse_from(["mesh-llm", "tui"])
-                .expect("tui alias should parse")
-                .command,
+            Cli::try_parse_from(["mesh-llm", "tui"]).expect("tui alias should parse").command,
             Some(Command::Dashboard)
         ));
         assert!(matches!(
