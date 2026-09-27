@@ -143,6 +143,8 @@ fn install_systemd_service(
             &context.binary_path,
             &paths.service_env_file,
             &paths.mesh_config_file,
+            service_auto,
+            service_mesh_discovery_mode,
         ),
     )?;
 
