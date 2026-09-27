@@ -14,13 +14,13 @@ peer, or uses Skippy stage splits for models that are too large for one box.
 Install the latest release executable:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Mesh-LLM/mesh-llm/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/marlucool/mesh-llm/main/install.sh | bash
 ```
 
 On Windows, use PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/Mesh-LLM/mesh-llm/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/marlucool/mesh-llm/main/install.ps1 | iex
 ```
 
 Install the Apple Silicon Homebrew formula with
@@ -36,7 +36,7 @@ Finish setup:
 mesh-llm setup
 ```
 
-On Windows PowerShell, use `mesh-llm.exe setup`. For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).
+On Windows PowerShell, use `mesh-llm.exe setup`. For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting-guide).
 
 For a worker that should reconnect after a restart, install the background service too:
 
@@ -97,7 +97,7 @@ mesh-llm serve --auto --headless
 |---|---|---|
 | Try the public mesh | `mesh-llm serve --auto` | [docs/MESHES.md](docs/MESHES.md) |
 | Start a private mesh | `mesh-llm serve --model Qwen3-8B-Q4_K_M` | [docs/MESHES.md](docs/MESHES.md) |
-| Serve one model without mesh networking (debugging/dev) | `mesh-llm serve --local-model-only --gguf /models/model.gguf` | OpenAI API defaults to `127.0.0.1:9337` (`--port` and `--listen-all` change it) |
+| Serve one model without mesh networking (debugging/dev) | `mesh-llm serve --local-model-only --gguf /models/model.gguf` | OpenAI API defaults to `127.0.0.1:9337` (`--port` and `--listen-all` ch[...]
 | Publish your own mesh | `mesh-llm serve --model Qwen3-8B-Q4_K_M --publish` | [docs/MESHES.md](docs/MESHES.md) |
 | Join by invite token | `mesh-llm serve --join <token>` | [docs/MESHES.md](docs/MESHES.md) |
 | Run an API-only client | `mesh-llm client --auto` | [docs/MESHES.md](docs/MESHES.md) |
@@ -253,7 +253,7 @@ archives work offline: the host discovers the adjacent
 Build from source with `just`:
 
 ```bash
-git clone https://github.com/Mesh-LLM/mesh-llm
+git clone https://github.com/marlucool/mesh-llm.git
 cd mesh-llm
 just build
 ```
@@ -293,7 +293,7 @@ binary to `invalid`, but default startup still allows it.
 
 ### Running natively on Windows (NVIDIA)
 
-Native Windows CUDA works, including on CUDA 13.x drivers: GPU detection (`mesh-llm gpus`) and full-speed CUDA inference have been verified on driver 610.74 (CUDA UMD 13.3) with an RTX 4070 Ti. The earlier advice to switch to WSL2 when `mesh-llm` reported `0 GPUs` on CUDA 13 drivers predates the cuda12-runtime compatibility fix ([#1127](https://github.com/Mesh-LLM/mesh-llm/issues/1127)) and no longer applies to current releases.
+Native Windows CUDA works, including on CUDA 13.x drivers: GPU detection (`mesh-llm gpus`) and full-speed CUDA inference have been verified on driver 610.74 (CUDA UMD 13.3) with an RTX 4070 Ti. T[...]
 
 As of v0.76.0-rc8, three distribution/loading bugs still block the out-of-the-box native path. Until the fixes ship, this sequence works end to end:
 
@@ -304,7 +304,7 @@ As of v0.76.0-rc8, three distribution/loading bugs still block the out-of-the-bo
    .\install.ps1 -PreRelease
    ```
 
-2. **Install the CUDA runtime from the product bundle** — `mesh-llm runtime install cuda` finds no windows/x86_64 runtimes in the release manifest ([#1511](https://github.com/Mesh-LLM/mesh-llm/issues/1511)). Download `mesh-llm-x86_64-pc-windows-msvc-cuda.zip` for your installed version from the [releases page](https://github.com/Mesh-LLM/mesh-llm/releases), extract it, then:
+2. **Install the CUDA runtime from the product bundle** — `mesh-llm runtime install cuda` finds no windows/x86_64 runtimes in the release manifest ([#1511](https://github.com/Mesh-LLM/mesh-llm/issues/1511)):
 
    ```powershell
    mesh-llm runtime install --bundle-dir "<extracted>\mesh-bundle" cuda
@@ -333,7 +333,7 @@ Inside your Ubuntu WSL2 terminal, install `cuda-toolkit-13-0` to supply `libcuda
 ```bash
 wget https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-wsl-ubuntu.pin
 sudo mv cuda-wsl-ubuntu.pin /etc/apt/preferences.d/cuda-repository-pin-600
-wget https://developer.download.nvidia.com/compute/cuda/13.0.0/local_installers/cuda-repo-wsl-ubuntu-13-0-local_13.0.0-1_amd64.deb
+wget https://developer.download.nvidia.com/compute/cuda/13.0.0/local_installers/cuda-repo-wsl-ubuntu-13.0.0-1_amd64.deb
 sudo dpkg -i cuda-repo-wsl-ubuntu-13-0-local_13.0.0-1_amd64.deb
 sudo cp /var/cuda-repo-wsl-ubuntu-13-0-local/cuda-*-keyring.gpg /usr/share/keyrings/
 sudo apt-get update && sudo apt-get -y install cuda-toolkit-13-0
@@ -343,7 +343,7 @@ source ~/.bashrc
 ```
 
 #### 2. Enable Hyper-V & Windows Firewall for WSL2 Mirrored Mode
-If you use WSL2 `networkingMode=mirrored` in `%UserProfile%\.wslconfig`, Windows 11 manages a separate **Hyper-V VM Firewall** that defaults to `Block` for inbound network traffic when third-party security software (e.g. Norton, McAfee) is present. 
+If you use WSL2 `networkingMode=mirrored` in `%UserProfile%\.wslconfig`, Windows 11 manages a separate **Hyper-V VM Firewall** that defaults to `Block` for inbound network traffic when third-part[...]
 
 ##### 2.1 Configure Mirrored Networking (`.wslconfig`) Part 1
 Create or edit `C:\Users\<username>\.wslconfig` on the Windows host:
@@ -382,7 +382,7 @@ New-NetFirewallRule -DisplayName "MeshLLM UDP In" -Direction Inbound -Action All
 ```
 
 #### 3. Match Model Paths for Direct LAN Reading
-To ensure worker nodes load GGUF model shards directly off local NVMe/SSD storage without streaming tens of gigabytes over the network, ensure the `--gguf` file path string is identical across all nodes (or use symlinks/bind mounts):
+To ensure worker nodes load GGUF model shards directly off local NVMe/SSD storage without streaming tens of gigabytes over the network, ensure the `--gguf` file path string is identical across al[...]
 
 ```bash
 # Example: Mount or symlink model path on worker nodes

@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$Repo = if ($env:MESH_LLM_INSTALL_REPO) { $env:MESH_LLM_INSTALL_REPO } else { "Mesh-LLM/mesh-llm" }
+$Repo = if ($env:MESH_LLM_INSTALL_REPO) { $env:MESH_LLM_INSTALL_REPO } else { "marlucool/mesh-llm" }
 $HostArchive = "mesh-llm-x86_64-pc-windows-msvc.zip"
 $ReleaseUrlBase = $env:MESH_LLM_INSTALL_URL_BASE
 $ComposedProductMinVersion = [System.Version]::Parse("0.75.0")
@@ -56,7 +56,7 @@ Environment overrides:
   MESH_LLM_INSTALL_DIR
   MESH_LLM_INSTALL_FLAVOR
   MESH_LLM_INSTALL_PRERELEASE=1
-  MESH_LLM_INSTALL_REPO=Mesh-LLM/mesh-llm
+  MESH_LLM_INSTALL_REPO=marlucool/mesh-llm
   MESH_LLM_REQUIRE_CHECKSUM=1
 "@
 }

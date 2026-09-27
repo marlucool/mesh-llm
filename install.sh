@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-REPO="${MESH_LLM_INSTALL_REPO:-Mesh-LLM/mesh-llm}"
+REPO="${MESH_LLM_INSTALL_REPO:-marlucool/mesh-llm}"
 INSTALL_DIR="${MESH_LLM_INSTALL_DIR:-$HOME/.local/bin}"
 INSTALL_FLAVOR="${MESH_LLM_INSTALL_FLAVOR:-}"
 INSTALL_PRERELEASE="${MESH_LLM_INSTALL_PRERELEASE:-0}"
@@ -71,10 +71,10 @@ Options:
   --pre-release              Install the latest published GitHub prerelease instead of the latest stable release.
   --install-dir DIR          Install the binary into DIR.
   --no-setup                 Do not run \
-                             \
+                              \
 mesh-llm setup automatically after install.
   --service                  Legacy compatibility flag. Passes --service through to \
-                             \
+                              \
 mesh-llm setup instead of installing services in shell.
   --no-start-service         Legacy compatibility flag. Ignored with a warning.
   --service-args VALUE       Legacy compatibility flag. Ignored with a warning.
@@ -83,6 +83,7 @@ mesh-llm setup instead of installing services in shell.
 
 Environment overrides:
   MESH_LLM_INSTALL_DIR
+  MESH_LLM_INSTALL_REPO=marlucool/mesh-llm
   MESH_LLM_INSTALL_URL_BASE  Override release asset base URL for testing.
   MESH_LLM_INSTALL_PRERELEASE=1
   MESH_LLM_INSTALL_FLAVOR    Legacy compatibility variable. Ignored with a warning.
@@ -363,8 +364,6 @@ cuda_library_major() {
 detect_cuda_major() {
     local ver=""
     if [[ "${MESH_LLM_TEST_CUDA_MAJOR+x}" == x ]]; then
-        # Platform fixtures must not depend on the CUDA installation of the host
-        # running the test.
         ver="$MESH_LLM_TEST_CUDA_MAJOR"
     else
         local driver_max=""
@@ -372,10 +371,6 @@ detect_cuda_major() {
         local cublas_major
         local cublas_lt_major
 
-        # nvidia-smi reports the maximum CUDA major supported by the driver.
-        # Prefer a complete toolkit when one is installed, but keep the driver
-        # value as the fallback because Linux CUDA runtime packages now carry
-        # their redistributable toolkit libraries.
         if command -v nvidia-smi >/dev/null 2>&1; then
             driver_max="$(nvidia-smi 2>/dev/null | grep -oE 'CUDA Version: *[0-9]+' | grep -oE '[0-9]+' | head -n 1 || true)"
             if [[ -n "$driver_max" ]] && (( driver_max > 13 )); then
@@ -477,9 +472,9 @@ latest_prerelease_tag() {
 {/g' |
         awk '
             /"prerelease":true/ && !/"draft":true/ {
-                if (match($0, /"tag_name":"[^"]+"/)) {
+                if (match($0, /"tag_name":"[^"]+/)) {
                     value = substr($0, RSTART, RLENGTH)
-                    sub(/^"tag_name":"/, "", value)
+                    sub(/^"tag_name":/, "", value)
                     sub(/"$/, "", value)
                     print value
                     exit
@@ -689,12 +684,8 @@ validate_bundle() {
         return 1
     fi
     if [[ "$has_product_manifest" == 0 ]]; then
-        # Pinned/pre-contract release assets remain installable. Their hosts
-        # either carry the legacy static runtime or use their own historical
-        # runtime-install flow; requiring a v2 product manifest here would make
-        # a previously published, checksum-valid release unrecoverable.
         local version_output legacy_version
-        if ! version_output="$("$binary" --version 2>&1)"; then
+        if ! version_output="$($binary --version 2>&1)"; then
             echo "error: cannot verify legacy release version before install: $version_output" >&2
             return 1
         fi
@@ -839,8 +830,6 @@ main() {
     tmp_dir="$(mktemp -d)"
     local tmp_dir_escaped
     printf -v tmp_dir_escaped '%q' "$tmp_dir"
-    # Expand the shell-escaped local now; the EXIT trap runs after main returns.
-    # shellcheck disable=SC2064
     trap "rm -rf -- $tmp_dir_escaped" EXIT
 
     info "Release channel: $(bool_is_true "$INSTALL_PRERELEASE" && echo prerelease || echo stable)"
