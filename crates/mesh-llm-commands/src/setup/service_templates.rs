@@ -29,7 +29,8 @@ pub(crate) fn render_service_runner(
     service_auto: bool,
     service_mesh_discovery_mode: Option<&str>,
 ) -> String {
-    let runtime_args = render_service_runtime_args(service_auto, service_mesh_discovery_mode);
+    let runtime_args =
+        render_service_runtime_args(service_auto, service_mesh_discovery_mode);
     let exec = if runtime_args.is_empty() {
         "exec \"$BIN\" serve".to_string()
     } else {
@@ -50,7 +51,8 @@ pub(crate) fn render_systemd_unit(
     service_auto: bool,
     service_mesh_discovery_mode: Option<&str>,
 ) -> String {
-    let runtime_args = render_service_runtime_args(service_auto, service_mesh_discovery_mode);
+    let runtime_args =
+        render_service_runtime_args(service_auto, service_mesh_discovery_mode);
     let exec_line = if runtime_args.is_empty() {
         format!(
             "ExecStart={} serve",
@@ -114,6 +116,7 @@ fn systemd_escape_token(value: &str) -> String {
         .replace('$', "$$")
         .replace('%', "%%")
 }
+
 
 pub(crate) fn render_service_runtime_args(
     service_auto: bool,
