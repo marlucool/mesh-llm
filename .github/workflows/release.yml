@@ -4,6 +4,9 @@ name: Release
 # GPU runner; unset or false uses GitHub-hosted runners.
 
 on:
+  push:
+    branches:
+      - 'release/**'
   workflow_dispatch:
     inputs:
       version:
