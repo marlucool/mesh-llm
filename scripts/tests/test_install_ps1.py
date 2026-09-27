@@ -231,6 +231,21 @@ class InstallPs1BehaviorTests(unittest.TestCase):
             )
             self.assertEqual(manifest["runtime"]["id"], "test-runtime")
 
+    def test_legacy_case_insensitive_runtime_tree_hash_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result, _calls = self._run_install(
+                tmp_path,
+                interactive=False,
+                archive_options={"legacy_runtime_ordering": True},
+            )
+
+            self.assertEqual(result.returncode, 0, self._combined_output(result))
+            self.assertIn("legacy Windows runtime tree ordering detected", self._combined_output(result))
+            self.assertTrue(
+                (tmp_path / "bin/native-runtimes/test-runtime/manifest.json").is_file()
+            )
+
     def _run_install(
         self,
         tmp_path: Path,
@@ -284,6 +299,7 @@ class InstallPs1BehaviorTests(unittest.TestCase):
         *,
         tamper_host_digest: bool = False,
         include_host_imports: bool = False,
+        legacy_runtime_ordering: bool = False,
     ) -> None:
         script_contents = (
             "#!/usr/bin/env bash\n"
@@ -338,7 +354,7 @@ class InstallPs1BehaviorTests(unittest.TestCase):
             "Z-file": b"uppercase",
             "a-file": b"lowercase",
         }
-        runtime_digest = self._tree_sha256(runtime_files)
+        runtime_digest = self._tree_sha256(runtime_files, case_insensitive=legacy_runtime_ordering)
         host_digest = hashlib.sha256(contents.encode()).hexdigest()
         if tamper_host_digest:
             host_digest = "0" * 64
@@ -373,9 +389,10 @@ class InstallPs1BehaviorTests(unittest.TestCase):
                 archive.writestr("mesh-bundle/host-imports.json", '{"imports":[]}\n')
         return hashlib.sha256(archive_path.read_bytes()).hexdigest()
 
-    def _tree_sha256(self, files: dict[str, bytes]) -> str:
+    def _tree_sha256(self, files: dict[str, bytes], *, case_insensitive: bool = False) -> str:
         digest = hashlib.sha256()
-        for relative_path in sorted(files):
+        paths = sorted(files, key=str.casefold) if case_insensitive else sorted(files)
+        for relative_path in paths:
             relative = relative_path.encode()
             digest.update(len(relative).to_bytes(8, "big"))
             digest.update(relative)
