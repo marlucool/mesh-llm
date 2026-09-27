@@ -18,6 +18,8 @@ and its `.sha256` sidecar so the installers can verify the download.
 
 ### Current fork release
 
+> This release is produced from the fork's release branch; the final GitHub release is published by the release workflow after all required CI jobs pass.
+
 - Version: `v0.76.1`
 - Repository: `marlucool/mesh-llm`
 - Release branch used to publish the release: `release/v0.76.1`
