@@ -187,6 +187,51 @@ fn windows_service_install_registers_logon_task() {
 }
 
 #[test]
+fn service_install_persists_tailscale_runtime_args() {
+    let temp = tempfile::tempdir().expect("tempdir should exist");
+    let home_dir = temp.path().join("home");
+    let config_root = temp.path().join("config");
+    let binary_path = temp.path().join("bin/mesh-llm");
+    fs::create_dir_all(binary_path.parent().expect("binary parent should exist"))
+        .expect("binary dir should exist");
+    fs::write(&binary_path, "binary").expect("binary should write");
+
+    let linux_context = ServiceInstallContext {
+        platform: SetupPlatform::Linux,
+        home_dir: home_dir.clone(),
+        config_root: config_root.clone(),
+        binary_path: binary_path.clone(),
+        user_id: String::new(),
+        start_service: false,
+    };
+    let mut runner = FakeRunner::default();
+    let report = install_service(
+        &linux_context,
+        &mut runner,
+        true,
+        Some("tailscale"),
+    )
+    .expect("systemd service install should succeed");
+    let unit = fs::read_to_string(&report.service_file).expect("unit file should exist");
+    assert!(unit.contains("--auto --mesh-discovery-mode=tailscale"));
+
+    let mac_context = ServiceInstallContext {
+        platform: SetupPlatform::MacOs,
+        home_dir,
+        config_root,
+        binary_path,
+        user_id: "501".to_string(),
+        start_service: false,
+    };
+    let mut runner = FakeRunner::default();
+    let report = install_service(&mac_context, &mut runner, true, Some("tailscale"))
+        .expect("launchd service install should succeed");
+    let runner_path = report.runner_file.expect("launchd runner should be recorded");
+    let script = fs::read_to_string(runner_path).expect("runner script should exist");
+    assert!(script.contains("serve --auto --mesh-discovery-mode=tailscale"));
+}
+
+#[test]
 fn linux_service_install_writes_systemd_files_and_runs_expected_commands() {
     let temp = tempfile::tempdir().expect("tempdir should exist");
     let home_dir = temp.path().join("home");
