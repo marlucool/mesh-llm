@@ -8,29 +8,27 @@
       "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7",
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-cpu"
       },
       "provenance": {
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       }
     },
     "public-web": {
@@ -40,29 +38,27 @@
       "native_toolchain_epoch": null,
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-web"
       },
       "provenance": {
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       }
     },
     "public-cuda12": {
@@ -72,29 +68,27 @@
       "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-6389ee2ae23c116b60fd1de61c1e67308ddabf50c274e7f1963b1a2d89b383e4",
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-cuda12"
       },
       "provenance": {
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       }
     },
     "public-cuda13": {
@@ -104,29 +98,27 @@
       "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-822ac658dc6e671286bddab9c92f70ce4ec0ae6a4f3b48da1578945971e63ac7",
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-cuda13"
       },
       "provenance": {
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       }
     },
     "public-rocm-ci": {
@@ -136,29 +128,27 @@
       "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-1bae8081975edf3f876e143c78a15464643d0192312a42fba9816c3f828ca005",
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-rocm72"
       },
       "provenance": {
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       }
     },
     "public-rocm-release": {
@@ -168,29 +158,27 @@
       "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-e82f0e51557d53e0bd4d4feaf79ea42681d3801fb4d0aeeeef3fa54e4e3e8184",
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-rocm70"
       },
       "provenance": {
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       }
     },
     "public-vulkan": {
@@ -200,29 +188,27 @@
       "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-08439af08af125c82c25c32cbcd385e07a783ba8d9b7c19157e93089e349156e",
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-vulkan"
       },
       "provenance": {
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       }
     },
     "public-browser": {
@@ -233,26 +219,24 @@
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       },
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-browser"
       },
       "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:6bc7df4166f2729d7c8e8bb070c14ae261cb67116d6b025760dcb4b56eea3cfd"
@@ -265,26 +249,24 @@
         "schema": 1,
         "scope": "reviewed_producer_admission",
         "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "origin": {
           "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
+          "mesh_revision": "950e90552b66ee58e2b67279b30b5255461dc7c3",
           "repository": "Mesh-LLM/mesh-llm-runner-images",
           "repository_id": 1210986689,
           "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
+          "run_id": 34896161280,
+          "runner_images_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2",
+          "timestamp": "20260914210022",
           "workflow_id": 318369515,
           "workflow_path": ".github/workflows/build-and-push.yml"
         },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
+        "admission_validator_revision": "6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2"
       },
       "receipt": {
         "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
+        "cohort_sha256": "sha256:82ce86fd271ad275c0a7a5d6016aa6a56eee75c7a941a2ada1e54e97750827bb",
         "index_candidate_key": "candidate-index-public-ui"
       },
       "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:37dc12322bd2efaefc59e51ad58d8cd3284974cb23721d13f0ff3564715037bb"
@@ -788,7 +770,7 @@
   "compiler_seed": {
     "image_id": "public-cpu",
     "architecture": "amd64",
-    "key_prefix": "mesh-llm-sccache-seed-linux-x86_64-img-f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7-epoch-f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7-v3-",
+    "key_prefix": "mesh-llm-sccache-seed-linux-x86_64-img-f499b79b-epoch-f499b79b-v3-",
     "recipe_inputs": [
       "Cargo.lock",
       ".github/cache-version.txt",
