@@ -68,6 +68,12 @@ pub struct GpuConfig {
     pub assignment: GpuAssignment,
     #[serde(default)]
     pub parallel: Option<usize>,
+    /// Let the local fit and auto-join count system RAM as model capacity on
+    /// a host with accelerator memory. Off when unset: a model that only fits
+    /// by spilling into RAM decodes an order of magnitude slower. The
+    /// capacity advertised to the mesh never includes RAM either way.
+    #[serde(default)]
+    pub host_ram_offload: Option<bool>,
 }
 
 pub const DEFAULT_MODEL_TARGET_DEMAND_UPGRADE_MIN_REQUESTS: u64 = 2;
@@ -120,6 +126,9 @@ pub struct RuntimeConfig {
     pub reconcile_model_target_demand_upgrades: bool,
     #[serde(default)]
     pub native_runtime: NativeRuntimeConfig,
+    /// Node-wide resident and durable KV-cache policy.
+    #[serde(default)]
+    pub kv_cache: RuntimeKvCacheConfig,
     #[serde(default = "default_model_target_demand_upgrade_min_requests")]
     pub model_target_demand_upgrade_min_requests: u64,
     #[serde(default = "default_model_target_demand_upgrade_max_age_secs")]
@@ -141,6 +150,7 @@ impl Default for RuntimeConfig {
             reconcile_model_targets: false,
             reconcile_model_target_demand_upgrades: false,
             native_runtime: NativeRuntimeConfig::default(),
+            kv_cache: RuntimeKvCacheConfig::default(),
             model_target_demand_upgrade_min_requests:
                 DEFAULT_MODEL_TARGET_DEMAND_UPGRADE_MIN_REQUESTS,
             model_target_demand_upgrade_max_age_secs:
@@ -178,6 +188,62 @@ impl LifecycleLogParserMode {
             Self::Enabled => "enabled",
             Self::Disabled => "disabled",
         }
+    }
+}
+
+pub const DEFAULT_KV_DISK_MINIMUM_FREE_MIB: u64 = 16 * 1024;
+pub const MIN_KV_DISK_MINIMUM_FREE_MIB: u64 = 1024;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum KvDiskTierMode {
+    #[default]
+    Off,
+    Auto,
+    Fixed,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum KvDiskCodec {
+    #[default]
+    Native,
+    #[serde(rename = "cachegen")]
+    CacheGen,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RuntimeKvCacheConfig {
+    #[serde(default)]
+    pub disk: KvDiskTierConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct KvDiskTierConfig {
+    #[serde(default)]
+    pub mode: Option<KvDiskTierMode>,
+    /// Absolute node-local root. Absence resolves to `$MESH_LLM_HOME/kv-cache`.
+    #[serde(default)]
+    pub directory: Option<std::path::PathBuf>,
+    /// Hard whole-node cap, required only in fixed mode.
+    #[serde(default)]
+    pub budget_mib: Option<u64>,
+    #[serde(default)]
+    pub minimum_free_mib: Option<u64>,
+    /// KV representation persisted in the disk tier. CacheGen remains an
+    /// explicit opt-in while backend/dtype qualification is incomplete.
+    #[serde(default)]
+    pub codec: KvDiskCodec,
+}
+
+impl KvDiskTierConfig {
+    pub fn effective_mode(&self) -> KvDiskTierMode {
+        self.mode.unwrap_or_default()
+    }
+
+    pub fn effective_minimum_free_mib(&self) -> u64 {
+        self.minimum_free_mib
+            .unwrap_or(DEFAULT_KV_DISK_MINIMUM_FREE_MIB)
     }
 }
 
@@ -341,8 +407,6 @@ pub struct ModelFitConfig {
     pub cache_type_k: Option<String>,
     #[serde(default)]
     pub cache_type_v: Option<String>,
-    #[serde(default)]
-    pub kv_cache_policy: Option<String>,
     #[serde(default)]
     pub kv_offload: Option<BoolOrAuto>,
     #[serde(default)]

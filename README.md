@@ -38,17 +38,20 @@ mesh-llm setup
 
 On Windows PowerShell, use `mesh-llm.exe setup`. For native Windows notes, and for the optional WSL2 setup and multi-node LAN clustering, see the [Windows & WSL2 Troubleshooting Guide](#-windows--wsl2-troubleshooting).
 
-For a worker that should reconnect after a restart, install the background service too:
+For a worker that should reconnect through Tailscale after a restart, install
+the background service with the same discovery settings:
 
 ```bash
-mesh-llm setup --service
+mesh-llm setup --service --auto --mesh-discovery-mode tailscale
 ```
 
-An explicit invite-token join is remembered in `~/.mesh-llm/invite.token`, so
-the service can reuse it after a reboot. Discovery bootstrap credentials are not
-persisted automatically. Linux users who need the service before login can also
-enable lingering with `sudo loginctl enable-linger $USER`. Windows uses a
-per-user Task Scheduler logon task and macOS uses a launchd agent.
+This persists the service startup command, so rebooting does not drop the
+selected Tailscale auto-discovery mode. An explicit MeshLLM invite-token join is
+remembered in `~/.mesh-llm/invite.token`; Tailscale discovery itself does not
+persist an invite token.
+Linux users who need the service before login can also enable lingering with
+`sudo loginctl enable-linger $USER`. Windows uses a per-user Task Scheduler
+logon task and macOS uses a launchd agent.
 
 To remove an executable install later, preview the cleanup first:
 
@@ -109,8 +112,6 @@ mesh-llm serve --auto --headless
 | Fan out one prompt to every model in the mesh | `curl ... -d '{"model":"mesh", ...}'` | [docs/design/MOA_GATEWAY.md](docs/design/MOA_GATEWAY.md) |
 | Use Goose, OpenCode, Claude Code, or Pi | `mesh-llm goose`, `mesh-llm opencode`, `mesh-llm claude`, `mesh-llm pi` | [docs/AGENTS.md](docs/AGENTS.md) |
 | Build or contribute | `just build` | [CONTRIBUTING.md](CONTRIBUTING.md) |
-
-## How the mesh works
 
 ## Friendly command aliases
 

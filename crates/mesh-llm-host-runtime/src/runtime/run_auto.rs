@@ -15,10 +15,10 @@ use super::{
     StartupReadyReporter, bridge_skippy_native_logs, build_serving_list, cli_has_explicit_models,
     configure_skippy_native_logging, emit_configuration_ui_read_only_hint,
     initialize_embedded_runtime_entrypoint, initialize_runtime_entrypoint,
-    maybe_discover_join_candidates, next_runtime_instance_id, nostr_rediscovery, nostr_relays,
-    openai_guardrail_policy_handle, owner_runtime_config, prepare_runtime_startup,
-    publish_initial_openai_guardrails_status, record_first_joined_mesh_ts,
-    record_runtime_operational_event, resolve_runtime_owner_key_path,
+    kv_disk_config::configure_node_kv_disk_cache, maybe_discover_join_candidates,
+    next_runtime_instance_id, nostr_rediscovery, nostr_relays, openai_guardrail_policy_handle,
+    owner_runtime_config, prepare_runtime_startup, publish_initial_openai_guardrails_status,
+    record_first_joined_mesh_ts, record_runtime_operational_event, resolve_runtime_owner_key_path,
     resolve_startup_mesh_creation_state, run_auto_join_mesh_phase, run_auto_model_identity,
     run_auto_model_path_or_shutdown, run_auto_runtime_loop_and_shutdown, run_local_model_only,
     runtime_data_producer_for_console, runtime_startup_requirements, setup_run_auto_console_state,
@@ -347,7 +347,20 @@ pub(super) async fn run_runtime_cli(
         options.checkpoint_imatrix.as_deref(),
     )?;
     apply_runtime_config_options(&mut options, &config);
+    // Model resolution and search size models without the config in hand;
+    // they read this node's `gpu.host_ram_offload` from the process setting.
+    mesh_llm_system::capacity::set_process_host_ram_offload(
+        config.gpu.host_ram_offload.unwrap_or(false),
+    );
     join_sources::validate_join_token_sources(&options)?;
+
+    let disk_cache = configure_node_kv_disk_cache(&config, &options)?;
+    for warning in &disk_cache.configured.warnings {
+        let _ = emit_event(OutputEvent::Warning {
+            message: warning.clone(),
+            context: None,
+        });
+    }
 
     initialize_audit_logging_for_options(&options)?;
 
@@ -378,8 +391,13 @@ pub(super) async fn run_runtime_cli(
     handle_public_identity_transition(&options)?;
 
     let mut auto_join_candidates: Vec<(String, Option<String>)> = Vec::new();
-    maybe_discover_join_candidates(&mut options, has_startup_models, &mut auto_join_candidates)
-        .await?;
+    maybe_discover_join_candidates(
+        &mut options,
+        has_startup_models,
+        &mut auto_join_candidates,
+        config.gpu.host_ram_offload.unwrap_or(false),
+    )
+    .await?;
     let Some(PreparedRuntimeStartup {
         startup_specs,
         requested_model_names,
@@ -934,10 +952,20 @@ pub(super) async fn start_run_auto_node_and_plugins(
         .await;
 
     let (plugin_mesh_tx, plugin_mesh_rx) = tokio::sync::mpsc::channel(256);
-    let plugin_manager =
-        plugin::PluginManager::start(resolved_plugins, plugin_host_mode(options), plugin_mesh_tx)
-            .await?;
+    #[cfg(feature = "payments")]
+    let in_process = crate::network::payments::in_process_plugins(&node);
+    #[cfg(not(feature = "payments"))]
+    let in_process = plugin::InProcessPlugins::default();
+    let plugin_manager = plugin::PluginManager::start_with_in_process(
+        resolved_plugins,
+        plugin_host_mode(options),
+        plugin_mesh_tx,
+        in_process,
+    )
+    .await?;
     node.set_plugin_manager(plugin_manager.clone()).await;
+    #[cfg(feature = "payments")]
+    crate::network::payments::spawn_payment_recovery(&node).await;
     node.start_plugin_channel_forwarder(plugin_mesh_rx);
     Ok((node, channels, plugin_manager))
 }

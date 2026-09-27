@@ -24,6 +24,8 @@ use std::pin::Pin;
 #[derive(Clone, Copy, Debug)]
 pub struct SetupCommandArgs<'a> {
     pub options: SetupOptions,
+    pub service_auto: bool,
+    pub service_mesh_discovery_mode: Option<&'static str>,
     pub environment: SetupEnvironment,
     pub configured: NativeRuntimeConfigSelection<'a>,
 }
@@ -52,7 +54,13 @@ where
 
 pub async fn run_setup_command(args: SetupCommandArgs<'_>) -> Result<()> {
     let mut prompter = CliSetupPrompter;
-    let mut actions = CliSetupActions::new(args.environment, args.configured, args.options.verbose);
+    let mut actions = CliSetupActions::new(
+        args.environment,
+        args.configured,
+        args.options.verbose,
+        args.service_auto,
+        args.service_mesh_discovery_mode,
+    );
     let plan = run_setup(args.options, args.environment, &mut prompter, &mut actions).await?;
     print_setup_summary(&plan, &actions, args.options.verbose);
     Ok(())
@@ -76,6 +84,8 @@ pub(crate) struct CliSetupActions<'a> {
     pub(crate) service_outcome: SetupServiceOutcome,
     pub(crate) github_outcome: SetupGitHubOutcome,
     verbose: bool,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&'static str>,
 }
 
 impl<'a> CliSetupActions<'a> {
@@ -83,6 +93,8 @@ impl<'a> CliSetupActions<'a> {
         environment: SetupEnvironment,
         configured: NativeRuntimeConfigSelection<'a>,
         verbose: bool,
+        service_auto: bool,
+        service_mesh_discovery_mode: Option<&'static str>,
     ) -> Self {
         Self::with_support(
             environment,
@@ -91,6 +103,8 @@ impl<'a> CliSetupActions<'a> {
             Box::new(CliServiceCommandRunner),
             Box::new(ProcessGhCommandRunner::default()),
             verbose,
+            service_auto,
+            service_mesh_discovery_mode,
         )
     }
 
@@ -101,6 +115,8 @@ impl<'a> CliSetupActions<'a> {
         service_runner: Box<dyn ServiceCommandRunner>,
         github_runner: Box<dyn GhCommandRunner>,
         verbose: bool,
+        service_auto: bool,
+        service_mesh_discovery_mode: Option<&'static str>,
     ) -> Self {
         Self {
             environment,
@@ -112,6 +128,8 @@ impl<'a> CliSetupActions<'a> {
             service_outcome: SetupServiceOutcome::NotRequested,
             github_outcome: SetupGitHubOutcome::NotEvaluated,
             verbose,
+            service_auto,
+            service_mesh_discovery_mode,
         }
     }
 
@@ -130,6 +148,8 @@ impl<'a> CliSetupActions<'a> {
             service_runner,
             github_runner,
             false,
+            false,
+            None,
         )
     }
 
@@ -192,7 +212,12 @@ impl<'a> CliSetupActions<'a> {
             Some(context) => context,
             None => ServiceInstallContext::detect(self.environment.platform, true)?,
         };
-        let report = install_service(&context, self.service_runner.as_mut())?;
+        let report = install_service(
+            &context,
+            self.service_runner.as_mut(),
+            self.service_auto,
+            self.service_mesh_discovery_mode,
+        )?;
         print_service_install_result(&report, self.verbose);
         self.service_outcome = SetupServiceOutcome::Installed(report);
         Ok(())

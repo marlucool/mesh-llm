@@ -777,6 +777,18 @@ pub struct Cli {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
+    /// Node-local disk prompt cache: off, auto, or an explicit IEC size such as 32GiB.
+    #[arg(long, value_name = "off|auto|SIZE")]
+    pub kv_cache_disk: Option<String>,
+
+    /// Absolute node-local disk prompt-cache directory.
+    #[arg(long, value_name = "ABSOLUTE_PATH")]
+    pub kv_cache_disk_dir: Option<PathBuf>,
+
+    /// Minimum free storage to preserve, with an IEC suffix such as 16GiB.
+    #[arg(long, value_name = "SIZE")]
+    pub kv_cache_min_free: Option<String>,
+
     /// Path to the owner keystore used to attest this node.
     #[arg(long)]
     pub owner_key: Option<PathBuf>,
@@ -812,6 +824,13 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Manage the local mainnet Lightning wallet.
+    Wallet {
+        #[arg(long, default_value_t = 3131)]
+        port: u16,
+        #[command(subcommand)]
+        command: crate::wallet::WalletCommand,
+    },
     /// Serve local models and join or publish a mesh.
     #[command(visible_alias = "start")]
     Serve,
@@ -865,6 +884,12 @@ pub enum Command {
         #[command(subcommand)]
         command: ConfigCommand,
     },
+    /// Inspect and manage the node-local durable prompt cache.
+    #[command(name = "kv-cache")]
+    KvCache {
+        #[command(subcommand)]
+        command: KvCacheCommand,
+    },
     /// Inspect or change anonymous usage reporting.
     Analytics {
         #[command(subcommand)]
@@ -893,6 +918,12 @@ pub enum Command {
         /// Skip installing and enabling the mesh-llm service.
         #[arg(long = "no-service", conflicts_with = "service")]
         no_service: bool,
+        /// Automatically join the best mesh when the installed service starts.
+        #[arg(long, requires = "service")]
+        auto: bool,
+        /// Discovery provider to use with service auto-join.
+        #[arg(long, value_enum, requires = "service")]
+        mesh_discovery_mode: Option<MeshDiscoveryMode>,
         /// Skip downloading or configuring the native runtime.
         #[arg(long = "skip-runtime")]
         skip_runtime: bool,
@@ -1152,6 +1183,53 @@ pub enum AnalyticsCommand {
     Enable,
     /// Turn usage reporting off by writing `[analytics] enabled = false`.
     Disable,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum KvCacheCommand {
+    /// Show the configured and effective cache state.
+    Status {
+        /// Authenticated owner-control endpoint; repeat for multiple owned nodes.
+        #[arg(long = "endpoint")]
+        endpoints: Vec<String>,
+        #[arg(long, default_value = "3131")]
+        port: u16,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Evict least-recently-used inactive entries.
+    Prune {
+        /// Optional target size with an IEC suffix (for example 16GiB).
+        #[arg(long)]
+        target: Option<String>,
+        /// Exact numerical model identity; display names are not accepted.
+        #[arg(long)]
+        model_identity: Option<String>,
+        #[arg(long)]
+        yes: bool,
+        /// Authenticated owner-control endpoint; repeat for multiple owned nodes.
+        #[arg(long = "endpoint")]
+        endpoints: Vec<String>,
+        #[arg(long, default_value = "3131")]
+        port: u16,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Clear inactive entries while inference falls back to cold prefill.
+    Clear {
+        /// Exact numerical model identity; omit to clear the full root.
+        #[arg(long)]
+        model_identity: Option<String>,
+        #[arg(long)]
+        yes: bool,
+        /// Authenticated owner-control endpoint; repeat for multiple owned nodes.
+        #[arg(long = "endpoint")]
+        endpoints: Vec<String>,
+        #[arg(long, default_value = "3131")]
+        port: u16,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

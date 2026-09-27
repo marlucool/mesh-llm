@@ -262,11 +262,11 @@ Prefer exact entries returned by `mesh-llm models installed --json`, inspect
 their reported path and total size, and use `models show` for fit/capabilities.
 Prefer complete cached models before proposing any large download.
 
-`models installed --json` currently enumerates individual layer-package and
-split-shard files as separate entries (tracked as a bug: mesh should group
-these under one package ref). On a machine with cached Skippy packages this can
-be dozens of rows that are not independently runnable. Filter before you show
-anything to the user:
+`models installed --json` groups layer-package files and split-shard files
+under their canonical package reference. A cached Skippy package therefore
+appears as one model entry rather than one row per internal fragment. Keep
+using the reported path, total size, and model capabilities when deciding
+whether an entry is independently runnable.
 
 - Exclude split fragments and package internals: refs ending in `-layers` (or
   containing `/layers/` or `/shared/`), and any `layer-*.gguf`, `shared/*.gguf`,
@@ -369,11 +369,19 @@ running. If a block fails before the node joins, the main node cannot see its
 local error. Ask for the terminal output, or offer SSH-based inspection.
 
 To run a private-mesh node as a service instead of a foreground process, do not
-hand-edit the generated unit. `setup --service` installs a unit whose command
-is a bare `serve`, and the only non-default inputs it reads are
-`~/.mesh-llm/config.toml` and `~/.config/mesh-llm/service.env` (systemd loads
-the latter through `EnvironmentFile=-`; the launchd runner sources it before
-executing `serve`). Write the invite token to a file the operator owns. A token
+hand-edit the generated unit. `setup --service` installs a service using the
+runtime options supplied at setup time, plus the normal startup inputs from
+`~/.mesh-llm/config.toml` and `~/.config/mesh-llm/service.env`. For a worker
+that should auto-discover through Tailscale after reboot, use:
+
+```bash
+mesh-llm setup --service --auto --mesh-discovery-mode tailscale
+```
+
+The selected service runtime arguments are written directly into the generated
+systemd, launchd, or Windows startup command, so the discovery mode survives
+restarts without requiring a new pairing command. Write the invite token to a
+file the operator owns. A token
 at `~/.mesh-llm/invite.token` needs no further configuration, since that is the
 default location when no explicit file is named; the env line below pins the
 source explicitly, which is worth doing when the config path is not the default

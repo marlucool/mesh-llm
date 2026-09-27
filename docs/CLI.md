@@ -89,7 +89,7 @@ mesh-llm client --auto
 Use this to finish a fresh install after the executable is on your `PATH`.
 
 `mesh-llm setup` downloads and configures the native runtime, can install and
-enable the background service on supported macOS and Linux machines, and only
+enable the per-user background service on Linux, macOS, and Windows, and only
 shows the GitHub star prompt when it is interactive and eligible. The star
 prompt defaults to Yes, and `--yes` or `--no-interactive` skip it without
 starring anything. Default output is concise; use `--verbose` when you want
@@ -114,7 +114,7 @@ Switches:
 - `--skip-runtime`: skip downloading or configuring the native runtime.
 - `--verbose`: print detailed service paths, commands, log locations, and setup status.
 
-On Windows, `--service` is unsupported.
+On Windows, `--service` installs a per-user Task Scheduler logon task.
 
 ### `uninstall`
 
@@ -171,7 +171,7 @@ Switches:
 
 - `--join <TOKEN>`: join a specific mesh using an invite token (repeatable).
 - `--discover [NAME]`: discover a mesh and join it. With a name, joins the mesh matching that name. Without a name, behaves like `--auto`.
-- `--mesh-discovery-mode <nostr|mdns>`: choose the discovery provider. `nostr`
+- `--mesh-discovery-mode <nostr|mdns|tailscale>`: choose the discovery provider. `nostr`
   is the default public/WAN-capable mode. `mdns` browses LAN DNS-SD records,
   requires a supplied matching invite token for join material and LAN detail
   proof, and disables public iroh relays plus raw STUN startup probing. LAN

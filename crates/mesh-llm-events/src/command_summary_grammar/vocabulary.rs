@@ -2,6 +2,7 @@ pub(super) fn is_static_summary_token(token: &str) -> bool {
     matches!(
         token,
         "mesh-llm"
+            | "wallet"
             | "load"
             | "unload"
             | "status"
@@ -40,6 +41,7 @@ pub(super) fn is_static_summary_token(token: &str) -> bool {
             | "installed"
             | "cleanup"
             | "prune"
+            | "clear"
             | "certify"
             | "show"
             | "download"
@@ -49,6 +51,7 @@ pub(super) fn is_static_summary_token(token: &str) -> bool {
             | "import-prompts"
             | "model-prepare"
             | "runtime"
+            | "kv-cache"
             | "guardrails"
             | "bootstrap"
             | "remove"
@@ -185,6 +188,7 @@ pub(super) fn is_redacted_marker(token: &str) -> bool {
             | "--cache-dir"
             | "--mesh-version"
             | "--endpoint"
+            | "--model-identity"
             | "--profile"
             | "--instance-id"
             | "--expected-revision"

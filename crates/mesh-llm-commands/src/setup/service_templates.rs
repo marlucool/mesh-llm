@@ -23,11 +23,24 @@ pub(crate) fn render_service_env_file() -> String {
     .join("\n")
 }
 
-pub(crate) fn render_service_runner(binary_path: &Path, env_file: &Path) -> String {
+pub(crate) fn render_service_runner(
+    binary_path: &Path,
+    env_file: &Path,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
+) -> String {
+    let runtime_args =
+        render_service_runtime_args(service_auto, service_mesh_discovery_mode);
+    let exec = if runtime_args.is_empty() {
+        "exec \"$BIN\" serve".to_string()
+    } else {
+        format!("exec \"$BIN\" serve {runtime_args}")
+    };
     format!(
-        "#!/usr/bin/env bash\n\nset -euo pipefail\n\nBIN=\"{}\"\nENV_FILE=\"{}\"\n\nif [[ ! -x \"$BIN\" ]]; then\n    echo \"mesh-llm binary not found or not executable: $BIN\" >&2\n    exit 1\nfi\n\nif [[ -f \"$ENV_FILE\" ]]; then\n    set -a\n    # shellcheck source=/dev/null\n    . \"$ENV_FILE\"\n    set +a\nfi\n\nexec \"$BIN\" serve\n",
+        "#!/usr/bin/env bash\n\nset -euo pipefail\n\nBIN=\"{}\"\nENV_FILE=\"{}\"\n\nif [[ ! -x \"$BIN\" ]]; then\n    echo \"mesh-llm binary not found or not executable: $BIN\" >&2\n    exit 1\nfi\n\nif [[ -f \"$ENV_FILE\" ]]; then\n    set -a\n    # shellcheck source=/dev/null\n    . \"$ENV_FILE\"\n    set +a\nfi\n\n{}\n",
         shell_double_quote(&binary_path.to_string_lossy()),
         shell_double_quote(&env_file.to_string_lossy()),
+        exec,
     )
 }
 
@@ -35,11 +48,22 @@ pub(crate) fn render_systemd_unit(
     binary_path: &Path,
     service_env_file: &Path,
     mesh_config_file: &Path,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
 ) -> String {
-    let exec_line = format!(
-        "ExecStart={} serve",
-        systemd_quote_token(&binary_path.to_string_lossy())
-    );
+    let runtime_args =
+        render_service_runtime_args(service_auto, service_mesh_discovery_mode);
+    let exec_line = if runtime_args.is_empty() {
+        format!(
+            "ExecStart={} serve",
+            systemd_quote_token(&binary_path.to_string_lossy())
+        )
+    } else {
+        format!(
+            "ExecStart={} serve {runtime_args}",
+            systemd_quote_token(&binary_path.to_string_lossy())
+        )
+    };
     let service_env_file = systemd_escape_token(&service_env_file.to_string_lossy());
     format!(
         "# mesh-llm serve (startup models come from {mesh_config_file})\n[Unit]\nDescription=Mesh LLM user service\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=-{service_env_file}\n\n{exec_line}\nWorkingDirectory=%h\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n",
@@ -91,4 +115,19 @@ fn systemd_escape_token(value: &str) -> String {
         .replace('"', "\\\"")
         .replace('$', "$$")
         .replace('%', "%%")
+}
+
+
+pub(crate) fn render_service_runtime_args(
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
+) -> String {
+    let mut args = Vec::new();
+    if service_auto || service_mesh_discovery_mode.is_some() {
+        args.push("--auto".to_string());
+    }
+    if let Some(mode) = service_mesh_discovery_mode {
+        args.push(format!("--mesh-discovery-mode={mode}"));
+    }
+    args.join(" ")
 }

@@ -31,7 +31,6 @@ MeshLLM binary continues to work on ordinary networks.
 
 ## MeshLLM authorization tag
 
-
 When Tailscale discovery mode is enabled, MeshLLM only considers peers that
 carry the dedicated non-human-device tag `tag:mesh-llm`. This is an application
 authorization boundary in addition to ordinary Tailscale network connectivity.
@@ -62,9 +61,7 @@ The exact `tagOwners` entry should follow your existing tailnet ownership
 policy; the example above leaves tag management to tailnet administrators.
 
 Use this tag for MeshLLM service machines rather than ordinary end-user devices.
-Tailscale documents tags as identities for non-human devices, and a tagged device
-cannot simultaneously retain a user identity. See the [Tailscale tags documentation](https://tailscale.com/docs/features/tags).
-Tailscale tags are intended for non-human devices and also identify the device
+Tailscale documents tags as identities for non-human devices and also uses them
 for access-control purposes. See the [Tailscale tags documentation](https://tailscale.com/docs/features/tags).
 
 MeshLLM checks the local Tailscale control-plane peer state before returning its
@@ -88,6 +85,7 @@ normal mesh membership
 
 Tailscale's GitHub Action follows the same principle: CI runners receive an
 explicit tag and are governed by the grants attached to that tag. See the [Tailscale GitHub Action documentation](https://tailscale.com/docs/integrations/github/github-action).
+
 ## Tailscale addresses
 
 When diagnosing a node, check its Tailscale IPv4 address with:

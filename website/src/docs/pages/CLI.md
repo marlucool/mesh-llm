@@ -256,7 +256,7 @@ Switches:
 
 - `--join <TOKEN>`: join a specific mesh using an invite token (repeatable).
 - `--discover [NAME]`: discover a mesh via Nostr and join it. With a name, joins the mesh matching that name. Without a name, behaves like `--auto`.
-- `--mesh-discovery-mode <nostr|mdns>`: choose public Nostr or LAN mDNS discovery. mDNS is LAN-scoped and still requires an invite token for joining.
+- `--mesh-discovery-mode <nostr|mdns|tailscale>`: choose public Nostr, LAN mDNS, or Tailscale discovery. mDNS is LAN-scoped; Tailscale discovery only considers explicitly tagged `tag:mesh-llm` peers.
 - `--auto`: auto-join the best discovered mesh.
 - `--model <MODEL>`: model to serve (catalog id from `models recommended`, HF ref/URL, or path).
 - `--gguf <GGUF>`: serve a specific local GGUF file directly (repeatable).

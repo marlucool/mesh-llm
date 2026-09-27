@@ -2,11 +2,12 @@ use mesh_llm_cli::Command;
 
 use super::{
     DEFAULT_AGENT_PORT, DEFAULT_LOCAL_PORT, ModelPrepareSummary, SummaryAssembly, administration,
-    auth, benchmark, models, runtime,
+    auth, benchmark, kv_cache, models, runtime,
 };
 
 pub(super) fn format_command(command: &Command, assembly: &mut SummaryAssembly) {
     match command {
+        Command::Wallet { .. } => assembly.command.push_str(" wallet"),
         Command::Hermes(args) | Command::Openclaw(args) => {
             assembly
                 .command
@@ -26,6 +27,7 @@ pub(super) fn format_command(command: &Command, assembly: &mut SummaryAssembly) 
         Command::Dashboard => assembly.command.push_str(" dashboard"),
         Command::Models { command } => models::format_models(command, assembly),
         Command::Runtime { command } => runtime::format_runtime(command.as_ref(), assembly),
+        Command::KvCache { command } => kv_cache::format_kv_cache(command, assembly),
         Command::Plugin { command } => administration::format_plugin(command, assembly),
         Command::Auth { command } => auth::format_auth(command, assembly),
         Command::Benchmark { command } => benchmark::format_benchmark(command, assembly),

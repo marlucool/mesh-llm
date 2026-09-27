@@ -342,6 +342,7 @@ async fn spawn_owner_control_test_server() -> OwnerControlTestServer {
                 unload_model: None,
                 ensure_model: None,
                 drain_model: None,
+                kv_cache: None,
             }),
             error: None,
         };
@@ -426,6 +427,7 @@ async fn spawn_owner_control_apply_test_server(
                     unload_model: None,
                     ensure_model: None,
                     drain_model: None,
+                    kv_cache: None,
                 }),
                 error: None,
             },
@@ -561,7 +563,7 @@ async fn spawn_management_test_server_on(
     let addr = listener.local_addr().unwrap();
     let handle = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
-        handle_request(stream, &state).await
+        Box::pin(handle_request(stream, &state)).await
     });
     (addr, handle)
 }
@@ -651,6 +653,8 @@ fn make_test_peer(
         local_gguf_content_id_supported: false,
         owner_summary: crate::crypto::OwnershipSummary::default(),
         advertised_model_throughput: vec![],
+        #[cfg(feature = "payments")]
+        lightning_offers: Default::default(),
         cache_affinity: None,
 
         display_rtt: None,

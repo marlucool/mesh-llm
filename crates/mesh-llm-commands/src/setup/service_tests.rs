@@ -4,7 +4,7 @@ use super::service_paths::ServiceInstallContext;
 use super::service_runner::{ServiceCommand, ServiceCommandRunner};
 use super::service_templates::{
     SERVICE_LABEL, render_launchd_plist, render_service_env_file, render_service_runner,
-    render_systemd_unit,
+    render_service_runtime_args, render_systemd_unit,
 };
 use anyhow::{Result, anyhow};
 use std::collections::{HashMap, VecDeque};
@@ -56,7 +56,7 @@ fn rendered_templates_match_existing_unix_service_behavior() {
         "# Optional environment variables for mesh-llm.\n# Use plain KEY=value lines.\n# Example:\n# RUST_LOG=mesh_inference=debug\n\n# Join a private mesh without editing the generated unit.\n# The token file is re-read on every rejoin, so rotating the invite\n# token is just replacing the file's contents.\n# A token at the default location needs no line here at all: an\n# invite.token beside the resolved config file, which is\n# ~/.mesh-llm/invite.token for the default config path.\n# MESH_LLM_JOIN_FILE=/home/you/.mesh-llm/invite.token\n# MESH_LLM_JOIN=<complete invite token>\n"
     );
     assert_eq!(
-        render_service_runner(&binary_path, &env_file),
+        render_service_runner(&binary_path, &env_file, false, None),
         format!(
             "#!/usr/bin/env bash\n\nset -euo pipefail\n\nBIN=\"{}\"\nENV_FILE=\"{}\"\n\nif [[ ! -x \"$BIN\" ]]; then\n    echo \"mesh-llm binary not found or not executable: $BIN\" >&2\n    exit 1\nfi\n\nif [[ -f \"$ENV_FILE\" ]]; then\n    set -a\n    # shellcheck source=/dev/null\n    . \"$ENV_FILE\"\n    set +a\nfi\n\nexec \"$BIN\" serve\n",
             binary_path.display(),
@@ -64,7 +64,7 @@ fn rendered_templates_match_existing_unix_service_behavior() {
         )
     );
     assert_eq!(
-        render_systemd_unit(&binary_path, &env_file, &mesh_config),
+        render_systemd_unit(&binary_path, &env_file, &mesh_config, false, None),
         format!(
             "# mesh-llm serve (startup models come from {mesh_config})\n[Unit]\nDescription=Mesh LLM user service\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nEnvironmentFile=-{env_file}\n\nExecStart=\"/Users/example/.local/bin/mesh-llm\" serve\nWorkingDirectory=%h\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n",
             mesh_config = mesh_config.display(),
@@ -79,6 +79,34 @@ fn rendered_templates_match_existing_unix_service_behavior() {
             home_dir = home_dir.display(),
             stdout_log = stdout_log.display(),
             stderr_log = stderr_log.display(),
+        )
+    );
+}
+
+#[test]
+fn service_runtime_args_persist_tailscale_auto_join_across_restart() {
+    let binary_path = PathBuf::from("/home/example/.local/bin/mesh-llm");
+    let env_file = PathBuf::from("/home/example/.config/mesh-llm/service.env");
+    let mesh_config = PathBuf::from("/home/example/.mesh-llm/config.toml");
+
+    assert_eq!(
+        render_service_runtime_args(true, Some("tailscale")),
+        "--auto --mesh-discovery-mode=tailscale"
+    );
+    assert!(
+        render_service_runner(&binary_path, &env_file, true, Some("tailscale"))
+            .contains(r#"exec "$BIN" serve --auto --mesh-discovery-mode=tailscale"#)
+    );
+    assert!(
+        render_systemd_unit(
+            &binary_path,
+            &env_file,
+            &mesh_config,
+            true,
+            Some("tailscale")
+        )
+        .contains(
+            r#"ExecStart="/home/example/.local/bin/mesh-llm" serve --auto --mesh-discovery-mode=tailscale"#
         )
     );
 }
@@ -131,7 +159,7 @@ fn windows_service_install_registers_logon_task() {
     };
     let mut runner = FakeRunner::default();
 
-    let report = install_service(&context, &mut runner).expect("Windows service install should succeed");
+    let report = install_service(&context, &mut runner, false, None).expect("Windows service install should succeed");
 
     assert_eq!(report.status, ServiceInstallStatus::Started);
     assert_eq!(report.summary, "installed and started");
@@ -159,6 +187,51 @@ fn windows_service_install_registers_logon_task() {
 }
 
 #[test]
+fn service_install_persists_tailscale_runtime_args() {
+    let temp = tempfile::tempdir().expect("tempdir should exist");
+    let home_dir = temp.path().join("home");
+    let config_root = temp.path().join("config");
+    let binary_path = temp.path().join("bin/mesh-llm");
+    fs::create_dir_all(binary_path.parent().expect("binary parent should exist"))
+        .expect("binary dir should exist");
+    fs::write(&binary_path, "binary").expect("binary should write");
+
+    let linux_context = ServiceInstallContext {
+        platform: SetupPlatform::Linux,
+        home_dir: home_dir.clone(),
+        config_root: config_root.clone(),
+        binary_path: binary_path.clone(),
+        user_id: String::new(),
+        start_service: false,
+    };
+    let mut runner = FakeRunner::default();
+    let report = install_service(
+        &linux_context,
+        &mut runner,
+        true,
+        Some("tailscale"),
+    )
+    .expect("systemd service install should succeed");
+    let unit = fs::read_to_string(&report.service_file).expect("unit file should exist");
+    assert!(unit.contains("--auto --mesh-discovery-mode=tailscale"));
+
+    let mac_context = ServiceInstallContext {
+        platform: SetupPlatform::MacOs,
+        home_dir,
+        config_root,
+        binary_path,
+        user_id: "501".to_string(),
+        start_service: false,
+    };
+    let mut runner = FakeRunner::default();
+    let report = install_service(&mac_context, &mut runner, true, Some("tailscale"))
+        .expect("launchd service install should succeed");
+    let runner_path = report.runner_file.expect("launchd runner should be recorded");
+    let script = fs::read_to_string(runner_path).expect("runner script should exist");
+    assert!(script.contains("serve --auto --mesh-discovery-mode=tailscale"));
+}
+
+#[test]
 fn linux_service_install_writes_systemd_files_and_runs_expected_commands() {
     let temp = tempfile::tempdir().expect("tempdir should exist");
     let home_dir = temp.path().join("home");
@@ -178,7 +251,7 @@ fn linux_service_install_writes_systemd_files_and_runs_expected_commands() {
     };
     let mut runner = FakeRunner::default();
 
-    let report = install_service(&context, &mut runner).expect("systemd install should succeed");
+    let report = install_service(&context, &mut runner, false, None).expect("systemd install should succeed");
 
     assert_eq!(report.summary, "installed and started");
     assert_eq!(report.status, ServiceInstallStatus::Started);
@@ -238,7 +311,7 @@ fn macos_service_install_writes_runner_and_plist_and_preserves_manual_start_guid
     };
     let mut runner = FakeRunner::default();
 
-    let report = install_service(&context, &mut runner).expect("launchd install should succeed");
+    let report = install_service(&context, &mut runner, false, None).expect("launchd install should succeed");
 
     assert_eq!(
         report.summary,
@@ -249,7 +322,7 @@ fn macos_service_install_writes_runner_and_plist_and_preserves_manual_start_guid
         .expect("launchd runner should be recorded");
     assert_eq!(
         fs::read_to_string(&runner_file).expect("runner should exist"),
-        render_service_runner(&binary_path, &report.env_file)
+        render_service_runner(&binary_path, &report.env_file, false, None)
     );
     assert!(
         fs::read_to_string(&report.service_file)
@@ -289,7 +362,7 @@ fn linux_service_command_failure_is_a_setup_failure_when_starting_service() {
     );
 
     let error =
-        install_service(&context, &mut runner).expect_err("systemd enable failure should fail");
+        install_service(&context, &mut runner, false, None).expect_err("systemd enable failure should fail");
 
     assert!(
         error
@@ -321,7 +394,7 @@ fn macos_service_command_failure_is_a_setup_failure_when_starting_service() {
     runner.fail_once("launchctl bootstrap gui/501", "launchd bootstrap denied");
 
     let error =
-        install_service(&context, &mut runner).expect_err("launchd bootstrap failure should fail");
+        install_service(&context, &mut runner, false, None).expect_err("launchd bootstrap failure should fail");
 
     assert!(
         error

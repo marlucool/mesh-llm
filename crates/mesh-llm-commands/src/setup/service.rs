@@ -29,17 +29,27 @@ const WINDOWS_TASK_NAME: &str = "mesh-llm";
 pub(crate) fn install_service(
     context: &ServiceInstallContext,
     runner: &mut dyn ServiceCommandRunner,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
 ) -> Result<ServiceInstallReport> {
     match context.platform {
-        SetupPlatform::Linux => install_systemd_service(context, runner),
-        SetupPlatform::MacOs => install_launchd_service(context, runner),
-        SetupPlatform::Windows => install_windows_service(context, runner),
+        SetupPlatform::Linux => {
+            install_systemd_service(context, runner, service_auto, service_mesh_discovery_mode)
+        }
+        SetupPlatform::MacOs => {
+            install_launchd_service(context, runner, service_auto, service_mesh_discovery_mode)
+        }
+        SetupPlatform::Windows => {
+            install_windows_service(context, runner, service_auto, service_mesh_discovery_mode)
+        }
     }
 }
 
 fn install_windows_service(
     context: &ServiceInstallContext,
     runner: &mut dyn ServiceCommandRunner,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
 ) -> Result<ServiceInstallReport> {
     let paths = ServicePaths::from_context(context);
     fs::create_dir_all(&paths.service_config_dir)?;
@@ -120,6 +130,8 @@ fn install_windows_service(
 fn install_systemd_service(
     context: &ServiceInstallContext,
     runner: &mut dyn ServiceCommandRunner,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
 ) -> Result<ServiceInstallReport> {
     let paths = ServicePaths::from_context(context);
     fs::create_dir_all(&paths.service_config_dir)?;
@@ -131,6 +143,8 @@ fn install_systemd_service(
             &context.binary_path,
             &paths.service_env_file,
             &paths.mesh_config_file,
+            service_auto,
+            service_mesh_discovery_mode,
         ),
     )?;
 
@@ -173,7 +187,16 @@ fn install_systemd_service(
         false
     };
 
-    let exec_line = format!("ExecStart={} serve", shell_quote(&context.binary_path));
+    let runtime_args =
+        super::service_templates::render_service_runtime_args(service_auto, service_mesh_discovery_mode);
+    let exec_line = if runtime_args.is_empty() {
+        format!("ExecStart={} serve", shell_quote(&context.binary_path))
+    } else {
+        format!(
+            "ExecStart={} serve {runtime_args}",
+            shell_quote(&context.binary_path)
+        )
+    };
     let mut messages = Vec::new();
     if started {
         messages.push(format!(
@@ -220,6 +243,8 @@ fn install_systemd_service(
 fn install_launchd_service(
     context: &ServiceInstallContext,
     runner: &mut dyn ServiceCommandRunner,
+    service_auto: bool,
+    service_mesh_discovery_mode: Option<&str>,
 ) -> Result<ServiceInstallReport> {
     let paths = ServicePaths::from_context(context);
     fs::create_dir_all(&paths.service_config_dir)?;
@@ -230,6 +255,8 @@ fn install_launchd_service(
         &paths.service_runner,
         &context.binary_path,
         &paths.service_env_file,
+        service_auto,
+        service_mesh_discovery_mode,
     )?;
 
     let plist_existed = paths.launchd_plist_path.exists();

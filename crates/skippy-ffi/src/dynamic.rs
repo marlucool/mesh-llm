@@ -6,12 +6,13 @@ use std::{
 
 use crate::{
     ABI_VERSION_MAJOR, ABI_VERSION_MINOR, ABI_VERSION_PATCH, AbiVersion, ActivationBoundaryDesc,
-    ActivationDesc, BackendDevice, Error, GenerationSignalWindow, IterationRequest, KvPageDesc,
-    LlamaLogCallback, LlamaModelQuantizeParams, Model, ModelInfo, ModelTensorSourceV1, MtmdBitmap,
-    MtmdContext, MtmdContextParams, MtmdDecoderPos, MtmdGenAudioInfo, MtmdHelperBitmapWrapper,
-    MtmdHelperGenAudio, MtmdHelperGenAudioInput, MtmdHelperInitOpt, MtmdHelperVideo,
-    MtmdInputChunkType, MtmdInputChunks, MtmdInputText, NativeMtpDraft, NativeRuntimeLoadError,
-    NgramCache, Opaque, RuntimeConfig, SamplingConfig, Session, SkippyDecodeStepSampledMtpFn,
+    ActivationDesc, BackendDevice, CacheGenRecordV1, Error, GenerationSignalWindow,
+    IterationRequest, KvPageDesc, LlamaLogCallback, LlamaModelQuantizeParams, LlamaPerfContextFn,
+    Model, ModelInfo, ModelTensorSourceV1, MtmdBitmap, MtmdContext, MtmdContextParams,
+    MtmdDecoderPos, MtmdGenAudioInfo, MtmdHelperBitmapWrapper, MtmdHelperGenAudio,
+    MtmdHelperGenAudioInput, MtmdHelperInitOpt, MtmdHelperVideo, MtmdInputChunkType,
+    MtmdInputChunks, MtmdInputText, NativeMtpDraft, NativeRuntimeLoadError, NgramCache, Opaque,
+    RuntimeConfig, SamplingConfig, Session, SkippyDecodeStepSampledMtpFn,
     SkippyModelAttachMtpDraftModelFn, SkippyRuntimeEventReporterV1, StagePlan, StagePlanDescV1,
     StagePlanProfileDescV1, StagePlanStateDescV1, StagePlanStringRefV1, StagePlanValueDescV1,
     StagePlanValueKind, StagePlanner, StagePlannerConfigV1, Status, SystemOneSlot, TensorInfo,
@@ -229,6 +230,7 @@ dynamic_symbols! {
     skippy_import_full_state(session: *mut Session, layer_start: i32, layer_end: i32, input: *const c_void, input_bytes: usize, out_error: *mut *mut Error) -> Status;
     skippy_export_kv_page(session: *mut Session, layer_start: i32, layer_end: i32, token_start: u64, token_count: u64, out_desc: *mut KvPageDesc, output: *mut c_void, output_capacity: usize, out_bytes: *mut usize, out_error: *mut *mut Error) -> Status;
     skippy_import_kv_page(session: *mut Session, desc: *const KvPageDesc, input: *const c_void, input_bytes: usize, out_error: *mut *mut Error) -> Status;
+    skippy_import_cachegen_kv_page_v1(session: *mut Session, desc: *const KvPageDesc, records: *const CacheGenRecordV1, record_count: usize, out_error: *mut *mut Error) -> Status;
     skippy_export_recurrent_state(session: *mut Session, output: *mut c_void, output_capacity: usize, out_bytes: *mut usize, out_error: *mut *mut Error) -> Status;
     skippy_import_recurrent_state(session: *mut Session, input: *const c_void, input_bytes: usize, out_error: *mut *mut Error) -> Status;
     skippy_session_save_prefix(session: *mut Session, cache_seq_id: i32, token_count: u64, out_error: *mut *mut Error) -> Status;
@@ -288,6 +290,7 @@ dynamic_symbols! {
     mtmd_helper_image_get_decoder_pos(image: *const Opaque, pos_0: i32, out_pos: *mut MtmdDecoderPos);
     mtmd_helper_eval_chunks(ctx: *mut MtmdContext, lctx: *mut Opaque, chunks: *const MtmdInputChunks, n_past: i32, seq_id: i32, n_batch: i32, logits_last: bool, new_n_past: *mut i32) -> c_int;
     mtmd_helper_eval_chunk_single(ctx: *mut MtmdContext, lctx: *mut Opaque, chunk: *const Opaque, n_past: i32, seq_id: i32, n_batch: i32, logits_last: bool, new_n_past: *mut i32) -> c_int;
+    mtmd_helper_eval_chunk_single_with_callback(ctx: *mut MtmdContext, lctx: *mut Opaque, chunk: *const Opaque, n_past: i32, seq_id: i32, n_batch: i32, logits_last: bool, new_n_past: *mut i32, callback: Option<unsafe extern "C" fn(i32, *mut c_void) -> c_int>, user_data: *mut c_void) -> c_int;
 }
 
 // -----------------------------------------------------------------------
@@ -410,6 +413,13 @@ pub fn skippy_abi_features_optional() -> Option<SkippyAbiFeaturesFn> {
     static CACHE: OnceLock<Option<SkippyAbiFeaturesFn>> = OnceLock::new();
     *CACHE
         .get_or_init(|| symbols().lookup_optional::<SkippyAbiFeaturesFn>(b"skippy_abi_features\0"))
+}
+
+/// Graph reuse counters. Optional: a runtime that predates this symbol must
+/// still load, since the counters are telemetry and never a correctness input.
+pub fn llama_perf_context_optional() -> Option<LlamaPerfContextFn> {
+    static CACHE: OnceLock<Option<LlamaPerfContextFn>> = OnceLock::new();
+    *CACHE.get_or_init(|| symbols().lookup_optional::<LlamaPerfContextFn>(b"llama_perf_context\0"))
 }
 
 pub(crate) fn llama_model_is_recurrent_fn() -> Option<LlamaModelStateFn> {
