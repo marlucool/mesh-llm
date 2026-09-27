@@ -145,7 +145,7 @@ class ReleaseWorkflowArtifactTests(unittest.TestCase):
 
     def test_linux_release_composers_use_cpu_tools_and_keep_readiness(self) -> None:
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-        cpu = "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7"
+        cpu = "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d"
         for name, next_name in (("compose_linux_aarch64_cuda", "compose_linux_cuda"),
                                 ("compose_linux_cuda", "compose_linux_rocm"),
                                 ("compose_linux_rocm", "compose_linux_vulkan"),
