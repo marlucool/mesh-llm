@@ -261,7 +261,7 @@ class RunnerImageIdentityTests(unittest.TestCase):
         self.assertEqual(lookup.stdout.strip(), self.image("public-cpu"))
         result = self.cli("seed-key", "--recipe-hash", "a" * 64)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "mesh-llm-sccache-seed-linux-x86_64-img-f499b79b-epoch-f499b79b-v3-" + "a" * 64)
+        self.assertEqual(result.stdout.strip(), "mesh-llm-sccache-seed-linux-x86_64-img-8d93de6b-epoch-8d93de6b-v2-" + "a" * 64)
 
     def test_publisher_and_sdk_roles_require_single_bindings(self) -> None:
         for role_id, message in (
