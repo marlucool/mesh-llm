@@ -46,8 +46,9 @@ mesh-llm setup --service --auto --mesh-discovery-mode tailscale
 ```
 
 This persists the service startup command, so rebooting does not drop the
-selected Tailscale auto-discovery mode. After the first successful join, the
-normal MeshLLM invite token is also remembered in `~/.mesh-llm/invite.token`.
+selected Tailscale auto-discovery mode. An explicit MeshLLM invite-token join is
+remembered in `~/.mesh-llm/invite.token`; Tailscale discovery itself does not
+persist an invite token.
 Linux users who need the service before login can also enable lingering with
 `sudo loginctl enable-linger $USER`. Windows uses a per-user Task Scheduler
 logon task and macOS uses a launchd agent.
