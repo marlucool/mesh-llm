@@ -893,6 +893,12 @@ pub enum Command {
         /// Skip installing and enabling the mesh-llm service.
         #[arg(long = "no-service", conflicts_with = "service")]
         no_service: bool,
+        /// Automatically join the best mesh when the installed service starts.
+        #[arg(long, requires = "service")]
+        auto: bool,
+        /// Discovery provider to use with service auto-join.
+        #[arg(long, value_enum, requires = "service")]
+        mesh_discovery_mode: Option<MeshDiscoveryMode>,
         /// Skip downloading or configuring the native runtime.
         #[arg(long = "skip-runtime")]
         skip_runtime: bool,
@@ -1431,8 +1437,8 @@ mod tests {
 
     #[test]
     fn dashboard_command_parses() {
-        let cli = Cli::try_parse_from(["mesh-llm", "dashboard"])
-            .expect("dashboard command should parse");
+        let cli =
+            Cli::try_parse_from(["mesh-llm", "dashboard"]).expect("dashboard command should parse");
 
         assert!(matches!(cli.command, Some(Command::Dashboard)));
     }
@@ -1440,11 +1446,15 @@ mod tests {
     #[test]
     fn friendly_command_aliases_parse() {
         assert!(matches!(
-            Cli::try_parse_from(["mesh-llm", "start"]).expect("start alias should parse").command,
+            Cli::try_parse_from(["mesh-llm", "start"])
+                .expect("start alias should parse")
+                .command,
             Some(Command::Serve)
         ));
         assert!(matches!(
-            Cli::try_parse_from(["mesh-llm", "tui"]).expect("tui alias should parse").command,
+            Cli::try_parse_from(["mesh-llm", "tui"])
+                .expect("tui alias should parse")
+                .command,
             Some(Command::Dashboard)
         ));
         assert!(matches!(
