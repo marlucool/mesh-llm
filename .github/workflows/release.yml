@@ -158,10 +158,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cargo/bin:$PATH"
           if ! command -v sccache >/dev/null 2>&1; then
-            cargo install sccache --version 0.16.0 --locked --force
+            RUSTC_WRAPPER='' cargo install sccache --version 0.16.0 --locked --force
           fi
+          command -v sccache
           sccache --version
       - name: Prepare canonical release source
         id: source
