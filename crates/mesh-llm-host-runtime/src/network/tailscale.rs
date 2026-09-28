@@ -383,7 +383,9 @@ fn elapsed_millis(started: Instant) -> u64 {
 
 fn compare_peer_latency(a: &TailscaleMeshPeer, b: &TailscaleMeshPeer) -> Ordering {
     match (a.latency_ms, b.latency_ms) {
-        (Some(a), Some(b)) => a.cmp(&b).then_with(|| a.hostname.cmp(&b.hostname)),
+        (Some(latency_a), Some(latency_b)) => latency_a
+            .cmp(&latency_b)
+            .then_with(|| a.hostname.cmp(&b.hostname)),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
         (None, None) => a.hostname.cmp(&b.hostname),
@@ -392,7 +394,9 @@ fn compare_peer_latency(a: &TailscaleMeshPeer, b: &TailscaleMeshPeer) -> Orderin
 
 fn compare_doctor_peer(a: &TailscaleDoctorPeer, b: &TailscaleDoctorPeer) -> Ordering {
     match (a.latency_ms, b.latency_ms) {
-        (Some(a), Some(b)) => a.cmp(&b).then_with(|| a.hostname.cmp(&b.hostname)),
+        (Some(latency_a), Some(latency_b)) => latency_a
+            .cmp(&latency_b)
+            .then_with(|| a.hostname.cmp(&b.hostname)),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
         (None, None) => a.hostname.cmp(&b.hostname),
