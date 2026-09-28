@@ -264,7 +264,7 @@ pub async fn doctor(timeout: Duration) -> TailscaleDoctorReport {
     TailscaleDoctorReport {
         status_ok: true,
         status_error,
-        self_hostname,
+        self_hostname: Some(self_hostname),
         self_addresses,
         total_peer_count,
         online_peer_count,
