@@ -1018,6 +1018,7 @@ pub(super) fn relay_policy_for_mesh_discovery_mode(
     match mode {
         mesh_discovery::MeshDiscoveryMode::Nostr => mesh::RelayPolicy::DefaultPublic,
         mesh_discovery::MeshDiscoveryMode::Mdns => mesh::RelayPolicy::Disabled,
+        mesh_discovery::MeshDiscoveryMode::Tailscale => mesh::RelayPolicy::Disabled,
     }
 }
 

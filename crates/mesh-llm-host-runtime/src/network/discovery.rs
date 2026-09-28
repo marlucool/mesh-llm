@@ -708,6 +708,7 @@ pub(crate) fn discovery_source_label(mode: MeshDiscoveryMode, operation: &str) -
     match mode {
         MeshDiscoveryMode::Nostr => format!("Nostr {operation}"),
         MeshDiscoveryMode::Mdns => format!("mDNS LAN {operation}"),
+        MeshDiscoveryMode::Tailscale => format!("Tailscale {operation}"),
     }
 }
 

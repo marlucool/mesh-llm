@@ -1068,6 +1068,7 @@ pub(super) async fn spawn_run_auto_discovery_publisher(
             mesh_discovery::MeshDiscoveryMode::Mdns => {
                 spawn_run_auto_mdns_publisher(options, node, console_state)
             }
+            mesh_discovery::MeshDiscoveryMode::Tailscale => None,
         };
     }
     if options.mesh_discovery_mode == mesh_discovery::MeshDiscoveryMode::Nostr
