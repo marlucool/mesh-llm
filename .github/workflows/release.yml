@@ -583,11 +583,11 @@ jobs:
         include:
           - cuda_version: '12.9.2'
             cuda_major: '12'
-            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:6389ee2ae23c116b60fd1de61c1e67308ddabf50c274e7f1963b1a2d89b383e4
+            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:e03d19014e3b5f414c7cc5cfa6cd524a2f0bfa42e2cb44ae826096ae90a46ece
             toolchain_epoch: mesh-llm-cuda-runner-sha256-c5b85ef527230f77cf9933ef40bcb44316f9bbcb8fd2ce0651b58acda5143dfd
           - cuda_version: '13.1.2'
             cuda_major: '13'
-            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:822ac658dc6e671286bddab9c92f70ce4ec0ae6a4f3b48da1578945971e63ac7
+            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:cd8de4ac53ed222a53aeb9b9a1e915a42e1aa29266d8b7e84bf3fbdd5a4b4e37
             toolchain_epoch: mesh-llm-cuda-runner-sha256-6b87598605f5d8deeafecfb1a55027e0ca9e47f4fc6f230d030487c450c31aa6
     container:
       image: ${{ matrix.runner_image }}
@@ -647,13 +647,13 @@ jobs:
         include:
           - cuda_version: '12.9.2'
             cuda_major: '12'
-            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:6389ee2ae23c116b60fd1de61c1e67308ddabf50c274e7f1963b1a2d89b383e4
+            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:e03d19014e3b5f414c7cc5cfa6cd524a2f0bfa42e2cb44ae826096ae90a46ece
             toolchain_epoch: mesh-llm-cuda-runner-sha256-c5b85ef527230f77cf9933ef40bcb44316f9bbcb8fd2ce0651b58acda5143dfd
             cuda_architectures: '61;75;80;86;87;89;90'
             cuda_architectures_cache: '61_75_80_86_87_89_90'
           - cuda_version: '13.1.2'
             cuda_major: '13'
-            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:822ac658dc6e671286bddab9c92f70ce4ec0ae6a4f3b48da1578945971e63ac7
+            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:cd8de4ac53ed222a53aeb9b9a1e915a42e1aa29266d8b7e84bf3fbdd5a4b4e37
             toolchain_epoch: mesh-llm-cuda-runner-sha256-6b87598605f5d8deeafecfb1a55027e0ca9e47f4fc6f230d030487c450c31aa6
             cuda_architectures: '75;80;86;87;89;90;100;103;120;121'
             cuda_architectures_cache: '75_80_86_87_89_90_100_103_120_121'
@@ -733,7 +733,7 @@ jobs:
     if: ${{ needs.metadata.outputs.skip_gpu_bundles != 'true' }}
     runs-on: ${{ needs.metadata.outputs.runner_16 }}
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:e82f0e51557d53e0bd4d4feaf79ea42681d3801fb4d0aeeeef3fa54e4e3e8184
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:bdb1401d67d83f6ff38eaa1ba02b566afd826dfd5722cf9a461b252121e94e52
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -792,7 +792,7 @@ jobs:
     if: ${{ needs.metadata.outputs.skip_gpu_bundles != 'true' }}
     runs-on: ${{ needs.metadata.outputs.runner_16 }}
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:08439af08af125c82c25c32cbcd385e07a783ba8d9b7c19157e93089e349156e
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:cb38b8455c11c26f6bfea6dba8096b622758a56f9c061aff4f33445c8c903d8a
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1034,7 +1034,7 @@ jobs:
           - cuda_version: '12.9.2'
           - cuda_version: '13.1.2'
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1116,7 +1116,7 @@ jobs:
           - cuda_version: '13.1.2'
             cuda_major: '13'
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1191,7 +1191,7 @@ jobs:
     if: ${{ needs.metadata.outputs.skip_gpu_bundles != 'true' }}
     runs-on: ${{ needs.metadata.outputs.runner_4 }}
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1262,7 +1262,7 @@ jobs:
     if: ${{ needs.metadata.outputs.skip_gpu_bundles != 'true' }}
     runs-on: ${{ needs.metadata.outputs.runner_4 }}
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1633,7 +1633,7 @@ jobs:
           }
       - name: Install CUDA toolkit
         if: ${{ matrix.backend == 'cuda' }}
-        uses: Jimver/cuda-toolkit@3d45d157f327c09c04b50ee6ccdea2d9d017ec76 # v0.2.35
+        uses: Jimver/cuda-toolkit@b8bf9c6c28f8a92fbb04dcfcaee872e60c57462d # v0.2.36
         with:
           cuda: ${{ env.WINDOWS_CUDA_VERSION }}
           method: network
@@ -1983,7 +1983,7 @@ jobs:
     if: ${{ needs.metadata.outputs.prerelease != 'true' && needs.metadata.outputs.canary != 'true' }}
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
     env:
       SCCACHE_GHA_ENABLED: "false"
       SCCACHE_MULTILEVEL_CHAIN: disk
@@ -2015,7 +2015,7 @@ jobs:
     if: ${{ needs.metadata.outputs.prerelease != 'true' && needs.metadata.outputs.canary != 'true' }}
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7
+      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
     env:
       SCCACHE_GHA_ENABLED: "false"
       SCCACHE_MULTILEVEL_CHAIN: disk

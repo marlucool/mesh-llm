@@ -205,6 +205,9 @@ pub(super) async fn setup_passive_publication(
                     },
                 )));
             }
+            mesh_discovery::MeshDiscoveryMode::Tailscale => {
+                // Tailscale discovery is peer-based and requires no publisher loop.
+            }
         }
         return setup;
     }
