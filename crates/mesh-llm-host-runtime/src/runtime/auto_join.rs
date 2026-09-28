@@ -58,7 +58,7 @@ pub(super) async fn maybe_discover_join_candidates(
                     "auto-discovery",
                 ),
             });
-            let peers = mesh_discovery::tailscale::discover_mesh_peers(
+            let peers = crate::network::tailscale::discover_mesh_peers(
                 target_name.as_deref(),
                 std::time::Duration::from_secs(2),
             )
