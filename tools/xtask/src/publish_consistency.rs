@@ -468,7 +468,7 @@ fn check_publish_workflow_invariants(repo_root: &Path) -> DynResult<()> {
           if: ${{ needs.metadata.outputs.prerelease != 'true' && needs.metadata.outputs.canary != 'true' }}
           runs-on: ubuntu-24.04
           container:
-            image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d
+            image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
           env:
             SCCACHE_GHA_ENABLED: \"false\"
             SCCACHE_MULTILEVEL_CHAIN: disk
