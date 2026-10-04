@@ -29,20 +29,85 @@ function useChart() {
   return context
 }
 
+// Layer-3 fix from chart-bug.md: bypass recharts' <ResponsiveContainer>.
+// The internal SizeDetector → redux store dispatch chain is the primary
+// driver of the synchronous render loop (recharts v3.10.1 + react-redux v9
+// `defaultNoopBatch` → "Maximum update depth exceeded" on the /logs page).
+// We measure the wrapper once per layout change with a plain ResizeObserver
+// and pass explicit numeric width/height to the chart child, which skips
+// recharts' internal measurement and store notification entirely.
+type ChartContainerSize = { readonly width: number; readonly height: number }
+
+function useChartContainerSize(ref: React.RefObject<HTMLDivElement | null>): ChartContainerSize | undefined {
+  const [size, setSize] = React.useState<ChartContainerSize | undefined>(undefined)
+  const observerRef = React.useRef<ResizeObserver | null>(null)
+
+  React.useEffect(() => {
+    const element = ref.current
+    if (!element || typeof ResizeObserver === 'undefined') {
+      setSize((current) => current ?? { width: 0, height: 0 })
+      return
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      // Guard against zero-size containers while the panel is hidden: keep
+      // the last known size instead of forcing a 0x0 chart.
+      setSize((current) => {
+        const nextWidth = Math.floor(width)
+        const nextHeight = Math.floor(height)
+        if (current && current.width === nextWidth && current.height === nextHeight) return current
+        if (nextWidth === 0 && nextHeight === 0) return current
+        if (nextWidth === 0 || nextHeight === 0) return current
+        return { width: nextWidth, height: nextHeight }
+      })
+    })
+    observer.observe(element)
+    observerRef.current = observer
+    return () => {
+      observer.disconnect()
+      observerRef.current = null
+    }
+  }, [ref])
+
+  return size
+}
+
 export const ChartContainer = React.forwardRef<
   HTMLDivElement,
   Omit<ComponentProps<'div'>, 'children'> & {
     readonly config: ChartConfig
     readonly children: ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>['children']
   }
->(({ id, className, config, children, ...props }, ref) => {
+>((props, forwardedRef) => {
+  const { id, className, config, children, ...rest } = props
   const uniqueId = React.useId()
   const chartId = `chart-${id ?? uniqueId.replace(/:/g, '')}`
+  const innerRef = React.useRef<HTMLDivElement | null>(null)
+  const setInnerRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      innerRef.current = node
+      if (typeof forwardedRef === 'function') {
+        forwardedRef(node)
+      } else if (forwardedRef) {
+        forwardedRef.current = node
+      }
+    },
+    [forwardedRef]
+  )
+  const size = useChartContainerSize(innerRef)
+  const chart = React.isValidElement(children)
+    ? React.cloneElement(children, {
+        ...(size === undefined ? {} : { width: size.width, height: size.height })
+      })
+    : children
+
   return (
     <ChartContext.Provider value={{ config }}>
       <div
         data-chart={chartId}
-        ref={ref}
+        ref={setInnerRef}
         className={cn(
           'flex justify-center text-[length:var(--density-type-caption)]',
           '[&_.recharts-cartesian-axis-tick_text]:fill-fg-faint',
@@ -52,10 +117,10 @@ export const ChartContainer = React.forwardRef<
           '[&_.recharts-surface]:outline-none',
           className
         )}
-        {...props}
+        {...rest}
       >
         <ChartStyle id={chartId} config={config} />
-        <RechartsPrimitive.ResponsiveContainer>{children}</RechartsPrimitive.ResponsiveContainer>
+        {size === undefined ? null : chart}
       </div>
     </ChartContext.Provider>
   )
@@ -71,9 +136,50 @@ function ChartStyle({ id, config }: { readonly id: string; readonly config: Char
   return <style>{css}</style>
 }
 
-export function ChartTooltip(props: ComponentProps<typeof RechartsPrimitive.Tooltip>) {
-  return <RechartsPrimitive.Tooltip {...props} />
+// Defense-in-depth against recharts v3.10.x + react-redux v9's synchronous
+// `defaultNoopBatch` notification loop: recharts' `ReportChartProps` runs
+// `useEffect([dispatch, props])` with a fresh props object every render, so an
+// unmemoized tooltip re-dispatches on every parent render. Memoizing the
+// tooltip (shallow-comparing the `cursor` prop recharts shallow-compares, and
+// reference-comparing the rest) breaks that re-dispatch cycle without changing
+// tooltip behavior. See chart-bug.md at the repo root.
+function chartTooltipPropsAreEqual(
+  prev: ComponentProps<typeof RechartsPrimitive.Tooltip>,
+  next: ComponentProps<typeof RechartsPrimitive.Tooltip>
+): boolean {
+  const prevKeys = Object.keys(prev) as (keyof ComponentProps<typeof RechartsPrimitive.Tooltip>)[]
+  const prevLength = prevKeys.length
+  if (prevLength !== Object.keys(next).length) return false
+  for (const key of prevKeys) {
+    if (key === 'cursor') {
+      // recharts shallow-compares `cursor`; match that so the tooltip does not
+      // opt out of the internal axis-props memoization allowlist.
+      const prevCursor = prev[key]
+      const nextCursor = next[key]
+      if (prevCursor === nextCursor) continue
+      if (
+        typeof prevCursor === 'object' &&
+        prevCursor !== null &&
+        typeof nextCursor === 'object' &&
+        nextCursor !== null &&
+        Object.keys(prevCursor).length === Object.keys(nextCursor).length &&
+        (Object.keys(prevCursor) as (keyof typeof prevCursor)[]).every(
+          (cursorKey) => prevCursor[cursorKey] === nextCursor[cursorKey]
+        )
+      ) {
+        continue
+      }
+      return false
+    }
+    if (prev[key] !== next[key]) return false
+  }
+  return true
 }
+
+export const ChartTooltip = React.memo((props: ComponentProps<typeof RechartsPrimitive.Tooltip>) => {
+  return <RechartsPrimitive.Tooltip {...props} />
+}, chartTooltipPropsAreEqual)
+ChartTooltip.displayName = 'ChartTooltip'
 
 type ChartTooltipContentProps = {
   readonly active?: boolean

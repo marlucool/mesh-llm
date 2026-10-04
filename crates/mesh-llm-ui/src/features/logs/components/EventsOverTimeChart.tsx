@@ -46,6 +46,14 @@ import {
 import { hasVisibleEventVolumeTooltip } from '@/features/logs/components/events-over-time-chart-tooltip'
 import { useAdvancingChartClock } from '@/features/logs/lib/use-advancing-chart-clock'
 
+// Stable axis props: recharts' `axisPropsAreEqual` uses strict equality for
+// non-allowlisted props, so inline object literals (tick, tickFormatter,
+// cursor) defeat its memoization and feed the synchronous store-notify render
+// loop documented in chart-bug.md. Keep every one of them module-stable.
+const axisTickProps = { fill: 'var(--color-fg-faint)', fontSize: 11 } as const
+const yAxisTickFormatter = (value: number): string => (value >= 1000 ? `${Math.round(value / 1000)}k` : String(value))
+const tooltipCursorHighlight = { fill: 'var(--color-fg-faint)', fillOpacity: 0.08 } as const
+
 type EventsOverTimeChartProps = {
   readonly rows: readonly LogEventLedgerRow[]
   readonly selectedCategories: ReadonlySet<LogEventCategory>
@@ -127,6 +135,14 @@ export function EventsOverTimeChart({
     [data]
   )
   const effectiveIntervalMs = effectiveEventVolumeIntervalMs(data, intervalMs)
+  // Stable XAxis tickFormatter: `formatBucketTick` closes over
+  // `effectiveIntervalMs`; hoisting to a useCallback keeps the reference
+  // stable across renders while the interval is unchanged, so recharts'
+  // strict-equality axis memoization holds (see chart-bug.md).
+  const xAxisTickFormatter = useCallback(
+    (value: number) => formatBucketTick(value, effectiveIntervalMs),
+    [effectiveIntervalMs]
+  )
   const wasAutoBucketed = effectiveIntervalMs > intervalMs
   const currentPageBucketWindow = useMemo(
     () => overlappingBucketWindow(data, currentPageTimeWindow),
@@ -356,17 +372,17 @@ export function EventsOverTimeChart({
                   axisLine={false}
                   dataKey="bucketStart"
                   minTickGap={48}
-                  tick={{ fill: 'var(--color-fg-faint)', fontSize: 11 }}
-                  tickFormatter={(value: number) => formatBucketTick(value, effectiveIntervalMs)}
+                  tick={axisTickProps}
+                  tickFormatter={xAxisTickFormatter}
                   tickLine={false}
                   tickMargin={8}
                 />
                 <YAxis
                   allowDecimals={false}
                   axisLine={false}
-                  tick={{ fill: 'var(--color-fg-faint)', fontSize: 11 }}
+                  tick={axisTickProps}
                   tickLine={false}
-                  tickFormatter={(value: number) => (value >= 1000 ? `${Math.round(value / 1000)}k` : String(value))}
+                  tickFormatter={yAxisTickFormatter}
                   width={36}
                 />
                 {currentPageBucketWindow ? (
@@ -381,7 +397,7 @@ export function EventsOverTimeChart({
                 ) : null}
                 <ChartTooltip
                   content={renderTooltip}
-                  cursor={highlightedBucket?.total ? { fill: 'var(--color-fg-faint)', fillOpacity: 0.08 } : false}
+                  cursor={highlightedBucket?.total ? tooltipCursorHighlight : false}
                   isAnimationActive={false}
                 />
                 {activeCategories.map((category, categoryIndex) => (
