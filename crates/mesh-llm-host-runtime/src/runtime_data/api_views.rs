@@ -3,7 +3,9 @@ use super::snapshots::{
     LocalInstancesSnapshot, ModelViewSnapshot, PluginDataSnapshot, PluginEndpointsSnapshot,
     RuntimeStatusSnapshot, StatusViewSnapshot,
 };
-use crate::api::status::{MeshModelPayload, RuntimeStatusPayload, StatusPayload};
+use crate::api::status::{
+    MeshModelPayload, PluginFrameTelemetryPayload, RuntimeStatusPayload, StatusPayload,
+};
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RuntimeDataApiViews {
@@ -44,6 +46,7 @@ pub(crate) fn status_payload(snapshot: StatusViewSnapshot) -> StatusPayload {
             capabilities: None,
             lifecycle_instances: vec![],
             intent_summary: None,
+            runtime_events: None,
         },
         model_name: snapshot.model_name,
         models: snapshot.models,
@@ -78,6 +81,7 @@ pub(crate) fn status_payload(snapshot: StatusViewSnapshot) -> StatusPayload {
         first_joined_mesh_ts: snapshot.hardware.first_joined_mesh_ts,
         mesh_requirements: None,
         recent_mesh_rejections: vec![],
+        plugin_frame_telemetry: PluginFrameTelemetryPayload::default(),
         logging: None,
     }
 }
@@ -90,7 +94,8 @@ pub(crate) fn mesh_models(snapshot: ModelViewSnapshot) -> Vec<MeshModelPayload> 
 mod tests {
     use super::*;
     use crate::api::status::{
-        LocalInstance, NodeState, StatusPayload, build_gpus, build_ownership_payload,
+        LocalInstance, NodeState, PluginFrameTelemetryPayload, StatusPayload, build_gpus,
+        build_ownership_payload,
     };
     use crate::crypto::{OwnershipSummary, ReleaseAttestationStatus, ReleaseAttestationSummary};
     use crate::mesh::MeshCatalogEntry;
@@ -160,6 +165,7 @@ mod tests {
             publication_state: "public".into(),
             local_processes: vec![],
             peers: vec![],
+            connected_peer_ids: HashSet::new(),
             wakeable_nodes: vec![],
             routing_affinity: crate::network::affinity::AffinityStatsSnapshot::default(),
             hardware,
@@ -193,6 +199,7 @@ mod tests {
                 capabilities: None,
                 lifecycle_instances: vec![],
                 intent_summary: None,
+                runtime_events: None,
             },
             model_name: "Qwen-Test".into(),
             models: vec!["Qwen-Test".into()],
@@ -240,6 +247,7 @@ mod tests {
             first_joined_mesh_ts: Some(123),
             mesh_requirements: None,
             recent_mesh_rejections: vec![],
+            plugin_frame_telemetry: PluginFrameTelemetryPayload::default(),
             logging: None,
         };
 

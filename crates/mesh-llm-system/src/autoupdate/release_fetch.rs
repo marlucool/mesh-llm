@@ -675,6 +675,11 @@ fn collect_bundle_files(
 fn verify_staged_mesh_binary_version(extracted: &Path, expected_version: &str) -> Result<()> {
     let binary = extracted.join(mesh_binary_name());
     let output = std::process::Command::new(&binary)
+        // Not a user action. Without this the child initializes analytics and
+        // records the new build as current before the install has happened,
+        // which both mislabels the real restart and can leave a recorded
+        // upgrade behind if the install then fails.
+        .env(super::INTERNAL_HELPER_ENV, "1")
         .arg("--version")
         .output()
         .with_context(|| format!("Failed to run staged binary {}", binary.display()))?;
@@ -700,7 +705,8 @@ fn verify_staged_mesh_binary_version(extracted: &Path, expected_version: &str) -
     Ok(())
 }
 
-#[cfg(test)]
+// Only the runtime-tree tests use it, and they do not run on Windows.
+#[cfg(all(test, not(windows)))]
 fn installed_runtime_tree(install_dir: &Path) -> PathBuf {
     install_dir.join(NATIVE_RUNTIMES_DIR_NAME).join("runtime")
 }

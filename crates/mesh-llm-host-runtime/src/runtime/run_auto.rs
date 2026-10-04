@@ -1,10 +1,11 @@
 use super::daemon_startup::{check_mode_conflicts, resolve_effective_mode};
+use super::default_plugins::resolve_after_defaults;
 use super::join_sources;
 use super::plugin_host_role;
 use super::startup_identity::{emit_private_mesh_name_warning, handle_public_identity_transition};
 use super::status::mesh_guardrail_mode_to_openai;
 use super::{
-    AutoRuntimeNodeSetup, BootstrapProxyStopTx, DashboardContextUsage, ManagedModelController,
+    AutoRuntimeNodeSetup, DashboardContextUsage, ManagedModelController,
     ModelTargetReconciliationPolicy, ModelTargetReconciliationState, OpenAiGuardrailPolicyHandle,
     PreparedRuntimeStartup, RunAutoAdditionalModelsContext, RunAutoConsoleStateContext,
     RunAutoRuntimeLifecycleContext, RunAutoServingSurface, RunAutoServingSurfaceContext,
@@ -13,19 +14,19 @@ use super::{
     RuntimeResourcePlanningProfile, RuntimeSurface, SkippyNativeLogForwardingGuard,
     StartupLocalModelTask, StartupMeshCreationState, StartupModelPlan, StartupModelSpec,
     StartupReadyReporter, bridge_skippy_native_logs, build_serving_list, cli_has_explicit_models,
-    configure_skippy_native_logging, emit_configuration_ui_read_only_hint,
-    initialize_embedded_runtime_entrypoint, initialize_runtime_entrypoint,
-    maybe_discover_join_candidates, next_runtime_instance_id, nostr_rediscovery, nostr_relays,
-    openai_guardrail_policy_handle, owner_runtime_config, prepare_runtime_startup,
-    publish_initial_openai_guardrails_status, record_first_joined_mesh_ts,
+    configure_skippy_native_logging, configure_startup_lifecycle_log_parser,
+    emit_configuration_ui_read_only_hint, initialize_embedded_runtime_entrypoint,
+    initialize_runtime_entrypoint, kv_disk_config::configure_node_kv_disk_cache,
+    maybe_discover_join_candidates, maybe_select_small_auto_contribution, next_runtime_instance_id,
+    nostr_rediscovery, nostr_relays, openai_guardrail_policy_handle, owner_runtime_config,
+    prepare_runtime_startup, publish_initial_openai_guardrails_status, record_first_joined_mesh_ts,
     record_runtime_operational_event, resolve_runtime_owner_key_path,
-    resolve_startup_mesh_creation_state, run_auto_join_mesh_phase, run_auto_model_identity,
-    run_auto_model_path_or_shutdown, run_auto_runtime_loop_and_shutdown, run_local_model_only,
-    runtime_data_producer_for_console, runtime_startup_requirements, setup_run_auto_console_state,
-    setup_run_auto_serving_surface, spawn_embedded_runtime_control_forwarder,
-    spawn_run_auto_additional_model_tasks, spawn_run_auto_discovery_publisher,
-    start_run_auto_bootstrap_proxy, startup_device_override, startup_local_model_loop,
-    swarm_capture_observer_requested,
+    resolve_startup_mesh_creation_state, run_auto_join_mesh_phase,
+    run_auto_runtime_loop_and_shutdown, run_local_model_only, runtime_data_producer_for_console,
+    runtime_startup_requirements, setup_run_auto_console_state, setup_run_auto_serving_surface,
+    spawn_embedded_runtime_control_forwarder, spawn_run_auto_additional_model_tasks,
+    spawn_run_auto_discovery_publisher, start_run_auto_bootstrap_proxy, startup_device_override,
+    startup_local_model_loop, swarm_capture_observer_requested,
 };
 use crate::api;
 use crate::inference::{election, skippy};
@@ -54,15 +55,6 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU16},
 };
-
-#[expect(
-    dead_code,
-    reason = "the legacy advertised-model selection lane remains available to compatibility helpers and focused tests"
-)]
-pub(super) enum RunAutoModelSelection {
-    Model(PathBuf),
-    Shutdown,
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum RuntimeUnloadOwner {
@@ -249,9 +241,9 @@ pub(super) fn options_from_embedded_options(embedded: EmbeddedRuntimeOptions) ->
 /// SIGTERM. The plugin lifecycle is otherwise driven by the host connection
 /// closing, so a branch that did not observe the shared delivery would consume
 /// the signal and leave the plugin running indefinitely (#1969 review).
-async fn run_plugin_until_shutdown(name: String) -> Result<()> {
+async fn run_plugin_until_shutdown(name: String, args: Vec<String>) -> Result<()> {
     let shutdown = super::shutdown_signal::wait_for_shutdown_signal();
-    run_plugin_until(plugin::run_plugin_process(name), shutdown).await
+    run_plugin_until(plugin::run_plugin_process(name, args), shutdown).await
 }
 
 /// Run `plugin` until it completes, or until `shutdown` observes a
@@ -282,7 +274,7 @@ pub(super) async fn run_runtime_cli(
     // publishes readiness well before the serving loops await the signal, so a
     // handler installed at loop entry can miss a SIGTERM that arrives in
     // between and leave the daemon running until it is killed (#1812).
-    super::shutdown_signal::install_shutdown_signals();
+    super::shutdown_signal::install_shutdown_signals()?;
 
     options.validate_discovery_mode_args()?;
 
@@ -298,13 +290,15 @@ pub(super) async fn run_runtime_cli(
     // Load config only to configure their optional audit sink; failures stay
     // nonfatal so they retain their early-return behavior.
     if options.local_model_only {
+        super::shutdown_signal::wait_for_shutdown_signal_installation().await?;
         initialize_early_topology_audit_logging(&mut options)?;
         return run_local_model_only(options).await;
     }
 
     if let Some(name) = options.plugin.clone() {
+        super::shutdown_signal::wait_for_shutdown_signal_installation().await?;
         initialize_early_topology_audit_logging(&mut options)?;
-        return run_plugin_until_shutdown(name).await;
+        return run_plugin_until_shutdown(name, options.plugin_args.clone()).await;
     }
 
     let checked_updates = autoupdate::maybe_auto_update(autoupdate::AutoUpdateOptions {
@@ -347,7 +341,20 @@ pub(super) async fn run_runtime_cli(
         options.checkpoint_imatrix.as_deref(),
     )?;
     apply_runtime_config_options(&mut options, &config);
+    // Model resolution and search size models without the config in hand;
+    // they read this node's `gpu.host_ram_offload` from the process setting.
+    mesh_llm_system::capacity::set_process_host_ram_offload(
+        config.gpu.host_ram_offload.unwrap_or(false),
+    );
     join_sources::validate_join_token_sources(&options)?;
+
+    let disk_cache = configure_node_kv_disk_cache(&config, &options)?;
+    for warning in &disk_cache.configured.warnings {
+        let _ = emit_event(OutputEvent::Warning {
+            message: warning.clone(),
+            context: None,
+        });
+    }
 
     initialize_audit_logging_for_options(&options)?;
 
@@ -378,8 +385,20 @@ pub(super) async fn run_runtime_cli(
     handle_public_identity_transition(&options)?;
 
     let mut auto_join_candidates: Vec<(String, Option<String>)> = Vec::new();
-    maybe_discover_join_candidates(&mut options, has_startup_models, &mut auto_join_candidates)
-        .await?;
+    let auto_local_fit_gb = maybe_discover_join_candidates(
+        &mut options,
+        has_startup_models,
+        &mut auto_join_candidates,
+        config.gpu.host_ram_offload.unwrap_or(false),
+    )
+    .await?;
+    maybe_select_small_auto_contribution(
+        &mut options,
+        effective_mode,
+        has_startup_models,
+        &auto_join_candidates,
+        auto_local_fit_gb,
+    );
     let Some(PreparedRuntimeStartup {
         startup_specs,
         requested_model_names,
@@ -746,33 +765,13 @@ pub(super) fn configure_run_auto_process_state(
     }
 
     let native_log_rx = skippy_runtime::register_filtered_native_logs();
-    let parser_mode = native_log_parser_mode(config.runtime.lifecycle_log_parser);
-    let capabilities = skippy_runtime::probe_capabilities();
-    skippy_runtime::configure_native_log_parser(skippy_runtime::NativeLogParserPolicy::new(
-        parser_mode,
-        &capabilities,
-    ));
-    tracing::info!(
-        source = config.runtime.lifecycle_log_parser_source.as_str(),
-        "configured lifecycle native-log parser"
+    configure_startup_lifecycle_log_parser(
+        config.runtime.lifecycle_log_parser,
+        config.runtime.lifecycle_log_parser_source.as_str(),
     );
     bridge_skippy_native_logs(native_log_rx);
     skippy::configure_materialized_stage_cache();
     configure_skippy_native_logging(runtime.as_ref().map(|runtime| runtime.dir()));
-}
-
-pub(super) fn native_log_parser_mode(
-    mode: mesh_llm_config::LifecycleLogParserMode,
-) -> skippy_runtime::NativeLogParserMode {
-    match mode {
-        mesh_llm_config::LifecycleLogParserMode::Auto => skippy_runtime::NativeLogParserMode::Auto,
-        mesh_llm_config::LifecycleLogParserMode::Enabled => {
-            skippy_runtime::NativeLogParserMode::Enabled
-        }
-        mesh_llm_config::LifecycleLogParserMode::Disabled => {
-            skippy_runtime::NativeLogParserMode::Disabled
-        }
-    }
 }
 
 /// Lift the soft open-file limit to the hard limit. A serving node holds a
@@ -934,10 +933,20 @@ pub(super) async fn start_run_auto_node_and_plugins(
         .await;
 
     let (plugin_mesh_tx, plugin_mesh_rx) = tokio::sync::mpsc::channel(256);
-    let plugin_manager =
-        plugin::PluginManager::start(resolved_plugins, plugin_host_mode(options), plugin_mesh_tx)
-            .await?;
+    #[cfg(feature = "payments")]
+    let in_process = crate::network::payments::in_process_plugins(&node);
+    #[cfg(not(feature = "payments"))]
+    let in_process = plugin::InProcessPlugins::default();
+    let plugin_manager = plugin::PluginManager::start_with_in_process(
+        resolved_plugins,
+        plugin_host_mode(options),
+        plugin_mesh_tx,
+        in_process,
+    )
+    .await?;
     node.set_plugin_manager(plugin_manager.clone()).await;
+    #[cfg(feature = "payments")]
+    crate::network::payments::spawn_payment_recovery(&node).await;
     node.start_plugin_channel_forwarder(plugin_mesh_rx);
     Ok((node, channels, plugin_manager))
 }
@@ -1527,39 +1536,6 @@ pub(super) fn configure_swarm_capture(
     Ok(recorder)
 }
 
-#[expect(
-    dead_code,
-    reason = "the legacy advertised-model selection context is retained for compatibility helpers and focused tests"
-)]
-pub(super) struct RunAutoModelSelectionContext<'a> {
-    pub(super) options: &'a RuntimeOptions,
-    pub(super) node: &'a mesh::Node,
-    pub(super) startup_models: &'a [StartupModelPlan],
-    pub(super) local_models: &'a [String],
-    pub(super) is_client: bool,
-    pub(super) plugin_manager: &'a plugin::PluginManager,
-    pub(super) bootstrap_listener_tx: &'a mut Option<BootstrapProxyStopTx>,
-    pub(super) primary_startup_model: Option<&'a StartupModelPlan>,
-    pub(super) embedded_control_rx:
-        &'a mut Option<tokio::sync::mpsc::UnboundedReceiver<api::RuntimeControlRequest>>,
-}
-
-#[expect(
-    dead_code,
-    reason = "the daemon startup path supersedes advertised-model selection while compatibility tests still exercise it"
-)]
-pub(super) async fn select_advertised_run_auto_model(
-    mut ctx: RunAutoModelSelectionContext<'_>,
-) -> Result<Option<(PathBuf, String)>> {
-    let Some(model) = run_auto_model_path_or_shutdown(&mut ctx).await? else {
-        return Ok(None);
-    };
-
-    let (model_name, model_source) = run_auto_model_identity(ctx.primary_startup_model, &model);
-    advertise_run_auto_models(ctx.node, ctx.startup_models, &model_name, model_source).await;
-    Ok(Some((model, model_name)))
-}
-
 /// Serve mode: join the mesh and serve local models through the embedded runtime.
 pub(super) struct RunAutoContext {
     pub(super) options: RuntimeOptions,
@@ -1657,6 +1633,8 @@ fn install_run_auto_runtime_event_stack_with_selector(
     let engine = crate::runtime_events::engine::RuntimeEventEngine::new();
     engine.set_progress_diagnostic_class_bypass(progress_diagnostic_class_bypass);
     crate::runtime_events::install_runtime_event_engine(engine.clone());
+    #[cfg(feature = "dynamic-native-runtime")]
+    crate::system::native_runtime_events::replay_deferred_resolution(&engine);
     // Task 3: the engine-owned driver is the process's one production
     // drain loop (defect D3 -- previously nothing but the presentation
     // subscriber's own tick ever drained anything, and that tick is now a
@@ -1725,13 +1703,17 @@ async fn run_auto_inner(
         auto_join_candidates,
         mut embedded_control_rx,
     } = ctx;
+    // Do not create the mesh node or detached role watchers until a slow
+    // termination-signal observer has either registered every required stream
+    // or reported a terminal registration failure.
+    super::shutdown_signal::wait_for_shutdown_signal_installation().await?;
     super::node_lifecycle_events::emit_node_starting();
     // Stage-control starts accepting before eager model resolution. Register
     // every spelling that can become the model's runtime identity now so a
     // legacy/profile-unaware request cannot bypass local-required policy in
     // that window. False entries deliberately clear stale in-process policy.
     register_pre_accept_local_source_policies(&config, &startup_specs);
-    let resolved_plugins = resolve_plugins_from_config(&config, &options)?;
+    let resolved_plugins = resolve_after_defaults(&config, &options).await?;
     let swarm_capture = configure_swarm_capture(&options)?;
     tracing::debug!(
         mesh_requirements = ?runtime_startup_requirements(&startup_mesh_creation_state),
@@ -1853,6 +1835,7 @@ async fn run_auto_inner(
     }
 
     let interactive_started = Arc::new(AtomicBool::new(false));
+
     let RunAutoServingSurface {
         api_proxy_handle,
         console_server_handle,
@@ -2087,6 +2070,8 @@ mod tests {
                 name: BLOBSTORE_PLUGIN_ID.to_owned(),
                 enabled: Some(true),
                 web_ui_enabled: None,
+                web_ui_primary_tab: None,
+                allow_peer_blocks: None,
                 command: Some("invalid-blobstore-command".to_owned()),
                 args: Vec::new(),
                 url: None,

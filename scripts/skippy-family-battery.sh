@@ -259,7 +259,7 @@ PY
 
 record_preflight_outcome() {
   local name="$1" family="$2" model_id="$3" status="$4" outcome="$5" note="$6"
-  jq -n \
+  jq -c -n \
     --arg family "$family" \
     --arg model_id "$model_id" \
     --arg status "$status" \
@@ -355,7 +355,8 @@ startup_timeout_for_bytes() {
 
 cert_timeout_for_startup() {
   local startup_timeout="$1"
-  local timeout=$(( CERT_TIMEOUT_MIN_SECS + startup_timeout * CERT_TIMEOUT_STARTUP_MULTIPLIER ))
+  local extra_startups="${2:-0}"
+  local timeout=$(( CERT_TIMEOUT_MIN_SECS + startup_timeout * (CERT_TIMEOUT_STARTUP_MULTIPLIER + extra_startups) ))
   if (( timeout > CERT_TIMEOUT_MAX_SECS )); then
     timeout="$CERT_TIMEOUT_MAX_SECS"
   fi
@@ -379,7 +380,7 @@ scan_model() {
     return 0
   fi
   if ! "$BIN_DIR/skippy-model-package" inspect "$target" >"$scan_json" 2>"$scan_log"; then
-    jq -n \
+    jq -c -n \
       --arg family "$family" \
       --arg model_id "$model_id" \
       --arg target "$target" \
@@ -393,7 +394,7 @@ scan_model() {
   MODEL_SIZE_BYTES="$(jq '[.tensors[].byte_size] | add // 0' "$scan_json")"
   local dimensions
   if ! dimensions="$("$PLANNER" --inspect-gguf "$target")"; then
-    jq -n \
+    jq -c -n \
       --arg family "$family" \
       --arg model_id "$model_id" \
       --arg target "$target" \
@@ -427,22 +428,13 @@ scan_model() {
 
 preflight_environment() {
   local model_root="${HF_HOME:-$(dirname "$PREFLIGHT_FIRST_TARGET")}"
-  local port_mode="full" needs_oracle_server=0
-  if ! jq -e '[.selected_models[].class] | any(. == "causal_generation")' "$POLICY_PLAN_COPY" >/dev/null; then
-    port_mode="workload"
-    if jq -e '[.selected_models[].class] | any(. == "embedding" or . == "rerank" or . == "ocr" or . == "speech_recognition")' "$POLICY_PLAN_COPY" >/dev/null; then
-      needs_oracle_server=1
-    fi
-  fi
-  python3 - "$ARTIFACT_DIR" "$model_root" "$MIN_FREE_GIB" "$PREFLIGHT_ONLY" "$PREFLIGHT_DIR/environment.json" \
-    "$port_mode" "${SKIPPY_WORKLOAD_OPENAI_PORT:-19337}" "${SKIPPY_WORKLOAD_ORACLE_PORT:-19338}" "$needs_oracle_server" <<'PY'
+  python3 - "$ARTIFACT_DIR" "$model_root" "$MIN_FREE_GIB" "$PREFLIGHT_DIR/environment.json" <<'PY'
 import json
 import shutil
-import socket
 import sys
 from pathlib import Path
 
-artifact_root, model_root, minimum_gib, preflight_only, output, port_mode, candidate_port, oracle_port, needs_oracle_server = sys.argv[1:]
+artifact_root, model_root, minimum_gib, output = sys.argv[1:]
 minimum_bytes = int(minimum_gib) * 1024**3
 filesystems = []
 for label, path_text in (("artifacts", artifact_root), ("models", model_root)):
@@ -460,36 +452,12 @@ for label, path_text in (("artifacts", artifact_root), ("models", model_root)):
         }
     )
 
-busy_ports = []
-ports = list(range(19000, 20032)) if port_mode == "full" else [int(candidate_port)]
-if port_mode == "workload" and needs_oracle_server == "1":
-    ports.append(int(oracle_port))
-if any(port < 1 or port > 65535 for port in ports) or len(ports) != len(set(ports)):
-    raise SystemExit("invalid or conflicting workload certification ports")
-if preflight_only == "0":
-    for port in ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.settimeout(0.01)
-            if sock.connect_ex(("127.0.0.1", port)) == 0:
-                busy_ports.append(port)
-        except OSError:
-            busy_ports.append(port)
-        finally:
-            sock.close()
-
 report = {
     "filesystems": filesystems,
-    "port_range": {
-        "start": min(ports),
-        "end": max(ports),
-        "ports_checked": ports if port_mode == "workload" else None,
-        "checked": preflight_only == "0",
-        "busy": busy_ports,
-    },
+    "ports": {"allocation": "os-assigned-at-launch"},
 }
 Path(output).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-if any(not item["sufficient"] for item in filesystems) or busy_ports:
+if any(not item["sufficient"] for item in filesystems):
     raise SystemExit(1)
 PY
 }
@@ -498,11 +466,11 @@ run_certify() {
   local family="$1" target="$2" model_id="$3" source_revision="$4" split_layer="$5" chain_splits="$6" layer_end="$7" native_mtp="$8"
   local startup_timeout="$9" model_size_bytes="${10}" activation_width="${11}"
   TOTAL=$((TOTAL + 1))
-  local cert_run_id cert_run_dir exit_code manifest_path cert_timeout port_base started_at elapsed_seconds
+  local cert_run_id cert_run_dir exit_code manifest_path cert_timeout started_at elapsed_seconds
   cert_run_id="$(printf '%03d-%s' "$TOTAL" "$(slugify "$family")")"
   cert_run_dir="$CERT_DIR/$cert_run_id"
-  cert_timeout="$(cert_timeout_for_startup "$startup_timeout")"
-  port_base=$((19000 + ((TOTAL - 1) % 20) * 50))
+  # The all-head lane opens the integrated model and then its clean baseline.
+  cert_timeout="$(cert_timeout_for_startup "$startup_timeout" "$((2 * native_mtp))")"
   echo "==> family-certify: family=$family split=$split_layer chain=$chain_splits mtp=$native_mtp startup_timeout=${startup_timeout}s cert_timeout=${cert_timeout}s model=$(basename "$target")"
   local command=(
     "$ROOT/scripts/family-certify.sh"
@@ -516,7 +484,6 @@ run_certify() {
     --startup-timeout-secs "$startup_timeout"
     --cert-root "$cert_run_dir"
     --run-id certification
-    --port-base "$port_base"
     --require-lanes
     --skip-build
   )
@@ -536,9 +503,6 @@ run_certify() {
     --label "family certification $family split $split_layer" \
     -- "${command[@]}" || exit_code=$?
   elapsed_seconds=$(( $(date +%s) - started_at ))
-  if ! cleanup_certification_ports "$port_base"; then
-    exit_code=1
-  fi
   manifest_path=""
   if [[ -d "$cert_run_dir" ]]; then
     manifest_path="$(find "$cert_run_dir" -name manifest.json -type f -print -quit)"
@@ -559,7 +523,7 @@ run_certify() {
       '{family:$family,model_id:$model_id,source_revision:$source_revision,split_layer:$split_layer,model_size_bytes:$model_size_bytes,activation_width:$activation_width,startup_timeout_secs:$startup_timeout_secs,certification_timeout_secs:$certification_timeout_secs,elapsed_seconds:$elapsed_seconds,native_mtp:($native_mtp == 1),exit_code:$exit_code,manifest:input_filename,outcomes:.commands}' \
       "$manifest_path" >> "$RESULTS_JSONL"
   else
-    jq -n \
+    jq -c -n \
       --arg family "$family" \
       --arg model_id "$model_id" \
       --arg source_revision "$source_revision" \
@@ -579,27 +543,6 @@ run_certify() {
     FAILURES+=("$family@split=$split_layer")
     CERT_FAILURE_COUNT=$((CERT_FAILURE_COUNT + 1))
   fi
-}
-
-cleanup_certification_ports() {
-  local port_base="$1" port pid command
-  command -v lsof >/dev/null 2>&1 || return 0
-  for port in "$((port_base + 1))" "$((port_base + 11))" "$((port_base + 12))" "$((port_base + 31))" "$((port_base + 32))"; do
-    while IFS= read -r pid; do
-      [[ -n "$pid" ]] || continue
-      command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-      if [[ "$command" != *"$BIN_DIR/skippy-server"* ]]; then
-        echo "port $port remains owned by unexpected process $pid: $command" >&2
-        return 1
-      fi
-      kill -TERM "$pid" 2>/dev/null || true
-      for _ in 1 2 3 4 5; do
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 1
-      done
-      kill -KILL "$pid" 2>/dev/null || true
-    done < <(lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
-  done
 }
 
 preflight_manifest() {
@@ -627,6 +570,9 @@ preflight_manifest() {
     local expected_lane_csv
     expected_lane_csv="$(jq -r --arg model_class "$model_class" --arg profile "$profile" \
       '.model_class_lanes[$model_class] | if $profile == "workload-smoke" then .[:1] else . end | join(",")' "$plan")"
+    if [[ "$model_class" == "causal_generation" ]] && (( expected_mtp_layers > 0 )); then
+      expected_lane_csv+=",native-mtp-heads"
+    fi
     if [[ -z "$expected_lane_csv" || "$lane_csv" != "$expected_lane_csv" ]]; then
       echo "family $family does not preserve the $model_class lane contract" >&2
       exit 1
@@ -653,6 +599,10 @@ preflight_manifest() {
     if ! scan_model "$family" "$target" "$model_id" "$source_revision"; then
       PREFLIGHT_FAILURE_COUNT=$((PREFLIGHT_FAILURE_COUNT + 1))
       continue
+    fi
+    if (( DRY_RUN == 1 && expected_mtp_layers > 0 )); then
+      # Planning uses the declared count; execution still requires the scan below.
+      MODEL_HAS_MTP=1
     fi
     if (( DRY_RUN == 0 )); then
       local actual_mtp_layers=0
@@ -817,19 +767,11 @@ preflight_manifest() {
     return 1
   fi
   if ! preflight_environment; then
-    local environment_failure_note="insufficient disk headroom; see preflight/environment.json"
-    if (( PREFLIGHT_ONLY == 0 )); then
-      environment_failure_note="insufficient disk headroom or occupied certification ports; see preflight/environment.json"
-    fi
-    record_preflight_outcome "environment-preflight" "battery" "environment" "fail" "harness" "$environment_failure_note"
+    record_preflight_outcome "environment-preflight" "battery" "environment" "fail" "harness" "insufficient disk headroom; see preflight/environment.json"
     PREFLIGHT_FAILURE_COUNT=$((PREFLIGHT_FAILURE_COUNT + 1))
     return 1
   fi
-  local environment_note="disk headroom validated; certification ports not checked in preflight-only mode"
-  if (( PREFLIGHT_ONLY == 0 )); then
-    environment_note="disk headroom and certification port range validated"
-  fi
-  record_preflight_outcome "environment-preflight" "battery" "environment" "pass" "pass" "$environment_note"
+  record_preflight_outcome "environment-preflight" "battery" "environment" "pass" "pass" "disk headroom validated; certification ports are OS-assigned at lane launch"
 
 }
 
@@ -885,7 +827,7 @@ run_mmproj_smoke() {
     FAILURES+=("$family@mmproj")
     MM_SMOKE_FAILURE_COUNT=$((MM_SMOKE_FAILURE_COUNT + 1))
   fi
-  jq -n \
+  jq -c -n \
     --arg family "$family" \
     --arg model_id "$model_id" \
     --argjson exit_code "$exit_code" \
@@ -976,7 +918,7 @@ run_workload_certify() {
     fi
     "${verify_command[@]}" >>"$log_path" 2>&1 || exit_code=$?
   fi
-  jq -n \
+  jq -c -n \
     --arg family "$family" \
     --arg model_id "$model_id" \
     --arg source_revision "$source_revision" \
@@ -1072,7 +1014,7 @@ if (( DRY_RUN == 0 )); then
     echo "- Native MTP models: $(( $(wc -l < "$NATIVE_MTP_MODELS_TSV") - 1 ))"
     echo "- Preflight failures: $PREFLIGHT_FAILURE_COUNT"
     echo "- Startup timeout policy: min ${STARTUP_TIMEOUT_MIN_SECS}s + ${STARTUP_TIMEOUT_PER_GIB_SECS}s/GiB, capped at ${STARTUP_TIMEOUT_MAX_SECS}s"
-    echo "- Certification wall-clock policy: min ${CERT_TIMEOUT_MIN_SECS}s + ${CERT_TIMEOUT_STARTUP_MULTIPLIER}x startup timeout, capped at ${CERT_TIMEOUT_MAX_SECS}s"
+    echo "- Certification wall-clock policy: min ${CERT_TIMEOUT_MIN_SECS}s + ${CERT_TIMEOUT_STARTUP_MULTIPLIER}x startup timeout (+2x for native MTP head/baseline loads), capped at ${CERT_TIMEOUT_MAX_SECS}s"
     echo "- Minimum free space: ${MIN_FREE_GIB} GiB"
     echo
     echo "## Typed outcomes"

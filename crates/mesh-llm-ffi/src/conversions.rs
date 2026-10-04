@@ -22,8 +22,19 @@ use crate::native_runtime_types::{
     NativeRuntimePruneResultNative, NativeRuntimeVerificationPolicyNative,
 };
 use crate::request_types::{
-    ChatMessageNative, ChatRequestNative, PublicMesh, PublicMeshQuery, ResponsesRequestNative,
+    ChatMessageNative, ChatRequestNative, OpenAiResponseNative, PublicMesh, PublicMeshQuery,
+    ResponsesRequestNative,
 };
+
+impl From<mesh_llm_sdk::OpenAiResponse> for OpenAiResponseNative {
+    fn from(value: mesh_llm_sdk::OpenAiResponse) -> Self {
+        Self {
+            status_code: value.status_code,
+            content_type: value.content_type,
+            body: value.body,
+        }
+    }
+}
 
 fn path_to_string(path: std::path::PathBuf) -> String {
     path.display().to_string()
@@ -108,6 +119,7 @@ impl From<sdk_node::ModelCapabilities> for ModelCapabilities {
             reasoning: value.reasoning.into(),
             tool_use: value.tool_use.into(),
             moe: value.moe,
+            system_one: value.system_one.into(),
         }
     }
 }

@@ -8,7 +8,8 @@ use crate::network::openai::automatic;
 use crate::network::openai::client_stream::ClientStream;
 use crate::network::openai::transport as proxy;
 use crate::network::openai::workload_routing::{
-    self, is_audio_upload_path, model_satisfies_request_workload, request_workload_class,
+    self, is_audio_upload_path, model_satisfies_request, request_workload_class,
+    required_request_workload, unsupported_workload_message,
 };
 use crate::network::router;
 use crate::plugin::openai_exchange::{
@@ -39,7 +40,13 @@ fn plugin_route_status(outcome: &proxy::RouteDispatchOutcome) -> Option<u16> {
 /// this host's startup hardware survey (gpu, vram, soc, hostname). Every
 /// field is a real value or omitted; nothing is invented. Returned as a plain
 /// data struct so the wire event stays independent of the node internals.
-async fn serving_provenance_for_model(node: &mesh::Node, model_name: &str) -> ServingProvenance {
+/// `requested_by_node_id` is the mesh node that asked, when the request came
+/// over the mesh HTTP tunnel (see [`IngressRouteContext::requested_by_node_id`]).
+async fn serving_provenance_for_model(
+    node: &mesh::Node,
+    model_name: &str,
+    requested_by_node_id: Option<&str>,
+) -> ServingProvenance {
     // The served-model descriptor for exactly this model, if the node has one.
     // We match on the served identity's `model_name`; a miss (peer-served or
     // not-yet-described) leaves every model field `None` rather than guessing.
@@ -72,6 +79,7 @@ async fn serving_provenance_for_model(node: &mesh::Node, model_name: &str) -> Se
         vram_bytes: (node.advertised_memory.total_bytes != 0)
             .then_some(node.advertised_memory.total_bytes),
         is_soc: node.is_soc,
+        requested_by_node_id: requested_by_node_id.map(str::to_string),
     }
 }
 
@@ -132,6 +140,61 @@ fn outcome_was_served(outcome: &proxy::RouteDispatchOutcome) -> bool {
     )
 }
 
+/// The serving provenance a routing node can state for an exchange a peer
+/// delivered: only `served_by_node_id`, naming that peer, never this node.
+/// `serving_provenance_for_model` above describes this node's own model and
+/// hardware, so it is never used on this path.
+///
+/// The peer is the one `route_model_request` saw deliver the attempt
+/// (`observed_served_by_hex`, from [`proxy::ServedByNodeIdSink`]), which
+/// covers a request that named no `x-mesh-target`. An explicit `x-mesh-target`
+/// is the fallback: routing narrows the candidates to exactly that peer.
+/// `None` when the outcome was not served or neither is known. Every hardware
+/// and model field stays absent, since this node never touched that hardware.
+fn serving_provenance_for_remote_mesh(
+    target: Option<iroh::EndpointId>,
+    observed_served_by_hex: Option<String>,
+    outcome: &proxy::RouteDispatchOutcome,
+) -> Option<ServingProvenance> {
+    if !outcome_was_served(outcome) {
+        return None;
+    }
+    let served_by_node_id =
+        observed_served_by_hex.or_else(|| target.map(|id| hex::encode(id.as_bytes())))?;
+    Some(ServingProvenance {
+        served_by_node_id,
+        hostname: None,
+        quantization: None,
+        architecture: None,
+        context_length: None,
+        parameter_size: None,
+        layer_count: None,
+        model_identity_hash: None,
+        model_canonical_ref: None,
+        model_revision: None,
+        weights_digest: None,
+        gpu: None,
+        vram_bytes: None,
+        is_soc: None,
+        // This node routed the exchange; nobody asked it to serve.
+        requested_by_node_id: None,
+    })
+}
+
+/// The per-exchange facts [`publish_raw_proxy_terminal`] attaches beyond the
+/// outcome itself.
+#[derive(Clone, Copy, Default)]
+pub(super) struct RawProxyTerminalFacts<'a> {
+    /// `true` only on the host-served branch (this node's own weights and
+    /// hardware survey); see [`publish_raw_proxy_terminal`].
+    pub(super) served_locally: bool,
+    /// Canonical digest of the real request body the host dispatched.
+    pub(super) request_digest: Option<&'a str>,
+    /// The mesh node that asked, from the tunnel's authenticated remote id
+    /// ([`IngressRouteContext::requested_by_node_id`]). Host-served only.
+    pub(super) requested_by_node_id: Option<&'a str>,
+}
+
 /// Publish the raw-proxy path's terminal event for a served exchange, enriched
 /// with the serving provenance the host resolved from the node (what ran / at
 /// what fidelity / on whose hardware), the real token usage the dispatch
@@ -154,15 +217,19 @@ fn outcome_was_served(outcome: &proxy::RouteDispatchOutcome) -> bool {
 /// this node's own served-model quant/architecture/identity_hash). Omitting
 /// the whole block on the plugin path closes both windows at once rather than
 /// leaving the model-identity half open.
-async fn publish_raw_proxy_terminal(
+pub(super) async fn publish_raw_proxy_terminal(
     node: &mesh::Node,
     channel: &dyn OpenAiExchangeChannel,
     exchange_id: &str,
     model_name: &str,
     final_outcome: &proxy::RouteDispatchOutcome,
-    served_locally: bool,
-    request_digest: Option<&str>,
+    facts: RawProxyTerminalFacts<'_>,
 ) {
+    let RawProxyTerminalFacts {
+        served_locally,
+        request_digest,
+        requested_by_node_id,
+    } = facts;
     let mut envelope = OpenAiExchangeEnvelope::terminal(
         exchange_id.to_string(),
         OpenAiExchangeDispatchPath::RawProxy,
@@ -177,7 +244,7 @@ async fn publish_raw_proxy_terminal(
     // thrown away. On the plugin-served path, skip it regardless of outcome:
     // see the `served_locally` doc above.
     if served_locally && outcome_was_served(final_outcome) {
-        let provenance = serving_provenance_for_model(node, model_name).await;
+        let provenance = serving_provenance_for_model(node, model_name, requested_by_node_id).await;
         envelope = envelope.with_serving_provenance(provenance);
     }
     // The host-served (real-weights) branch reaches this via
@@ -275,6 +342,121 @@ fn remote_mesh_nonce_source(
     })
 }
 
+/// What this node knows about an exchange a peer delivered while this node
+/// only routed it.
+struct RemoteDeliveredFacts<'a> {
+    exchange_id: String,
+    model_name: &'a str,
+    nonce: Option<String>,
+    nonce_source: Option<ClientNonceSource>,
+    peer_capsule_id: Option<String>,
+    /// An explicit `x-mesh-target`, when the client named the peer.
+    target: Option<iroh::EndpointId>,
+    /// The peer `route_model_request` saw deliver the attempt.
+    observed_served_by_hex: Option<String>,
+    request_digest: Option<String>,
+    /// The client's `x-mesh-twin-bracket` value, copied unread.
+    twin_bracket_id: Option<String>,
+}
+
+/// The terminal envelope for an exchange a peer delivered: `RemoteMesh`,
+/// naming the peer that served it (never this node), with the digest of the
+/// request body this node forwarded and the digests over the response bytes
+/// it relayed. Both routes that can end at a peer publish it: the remote-mesh
+/// branch, and the local-candidates branch when election picked a peer over
+/// this node's own copy of the model.
+fn remote_delivered_terminal(
+    facts: RemoteDeliveredFacts<'_>,
+    outcome: &proxy::RouteDispatchOutcome,
+) -> OpenAiExchangeEnvelope {
+    let mut terminal = OpenAiExchangeEnvelope::terminal_remote_mesh(
+        facts.exchange_id,
+        facts.model_name,
+        plugin_route_status(outcome),
+        facts.nonce,
+        facts.nonce_source,
+        facts.peer_capsule_id,
+    )
+    .with_twin_bracket_id(facts.twin_bracket_id);
+    if let Some(provenance) =
+        serving_provenance_for_remote_mesh(facts.target, facts.observed_served_by_hex, outcome)
+    {
+        terminal = terminal.with_serving_provenance(provenance);
+    }
+    if let Some(digest) = facts.request_digest {
+        terminal = terminal.with_request_digest(digest);
+    }
+    // Digests over the response bytes this node relayed, carried up on the
+    // outcome by the relay; an all-`None` bundle (nothing captured) adds
+    // nothing.
+    let output_digests = exchange_output_digests_from_outcome(outcome);
+    if output_digests.has_any() {
+        terminal = terminal.with_output_digests(output_digests);
+    }
+    terminal
+}
+
+/// The facts for a local-candidates exchange that election delivered from a
+/// peer: the request's nonce and twin bracket, as on the remote-mesh branch,
+/// and the peer that delivered it.
+fn local_route_delivered_by_peer<'a>(
+    request: &proxy::BufferedHttpRequest,
+    exchange_id: String,
+    model_name: &'a str,
+    peer_hex: String,
+    peer_capsule_id: Option<String>,
+    request_digest: Option<String>,
+) -> RemoteDeliveredFacts<'a> {
+    let (nonce, nonce_origin) = request.capsule_nonce_headers();
+    let nonce_source = remote_mesh_nonce_source(&nonce, &nonce_origin);
+    RemoteDeliveredFacts {
+        exchange_id,
+        model_name,
+        nonce,
+        nonce_source,
+        peer_capsule_id,
+        target: None,
+        observed_served_by_hex: Some(peer_hex),
+        request_digest,
+        // Validated in `route_request`; copied unread.
+        twin_bracket_id: twin_bracket_id(request).ok().flatten(),
+    }
+}
+
+/// The terminal for the local-candidates route. Election there may deliver
+/// from a peer that also serves the model rather than from this node: then
+/// this node only routed the exchange, so it records it as the asking side
+/// (`RemoteMesh`, the peer as the server). Recording it as host-served would
+/// name this node as the server. Otherwise this node served it.
+async fn publish_local_route_terminal(
+    node: &mesh::Node,
+    channel: &dyn OpenAiExchangeChannel,
+    exchange_id: &str,
+    model_name: &str,
+    outcome: &proxy::RouteDispatchOutcome,
+    delivered_by_peer: Option<RemoteDeliveredFacts<'_>>,
+    host_served: RawProxyTerminalFacts<'_>,
+) {
+    match delivered_by_peer {
+        Some(facts) => {
+            channel
+                .publish(&remote_delivered_terminal(facts, outcome))
+                .await;
+        }
+        None => {
+            publish_raw_proxy_terminal(
+                node,
+                channel,
+                exchange_id,
+                model_name,
+                outcome,
+                host_served,
+            )
+            .await;
+        }
+    }
+}
+
 enum AutoRouteResolution {
     Continue {
         effective_model: Option<String>,
@@ -295,6 +477,11 @@ struct IngressRouteContext<'a> {
     targets: &'a election::ModelTargets,
     affinity: &'a affinity::AffinityRouter,
     plugin_manager: Option<&'a crate::plugin::PluginManager>,
+    /// The mesh node that sent this request over the HTTP tunnel, hex-encoded,
+    /// from the tunnel's QUIC-authenticated remote `EndpointId`. `None` for a
+    /// request on this node's local API. Carried onto the host-served
+    /// terminal as `ServingProvenance.requested_by_node_id`.
+    requested_by_node_id: Option<String>,
     /// Explicit exchange channel for the remote-mesh publish pair.
     /// When `None`, falls back to `plugin_manager` as the channel
     /// (production path). Set to `Some` in tests to inject a recording double,
@@ -466,8 +653,14 @@ async fn handle_models_list_request(
     let runtimes = node.all_model_runtime_descriptors().await;
     response_outcome(
         200,
-        proxy::send_models_list_with_descriptors(tcp_stream, &models, &descriptors, &runtimes)
-            .await,
+        proxy::send_models_list_with_descriptors(
+            tcp_stream,
+            &models,
+            &descriptors,
+            &runtimes,
+            Some(node),
+        )
+        .await,
     )
 }
 
@@ -513,8 +706,8 @@ async fn resolve_auto_routed_model(
     if let Some(model) = request.model_name.as_deref()
         && !automatic::is_directive(model)
     {
-        if let Some(workload) = requested_workload
-            && !model_satisfies_request_workload(model, workload, &request.client_path, descriptors)
+        if let Some(workload) = required_request_workload(&request.client_path)
+            && !model_satisfies_request(model, &request.client_path, descriptors)
         {
             return AutoRouteResolution::WorkloadUnsupported(workload);
         }
@@ -583,7 +776,7 @@ async fn resolve_auto_routed_model(
         descriptors,
     );
     if available.is_empty()
-        && let Some(workload) = requested_workload
+        && let Some(workload) = required_request_workload(&request.client_path)
     {
         return AutoRouteResolution::WorkloadUnsupported(workload);
     }
@@ -738,6 +931,7 @@ async fn try_pipeline_proxy(
     request: &mut proxy::BufferedHttpRequest,
     targets: &election::ModelTargets,
     strong_name: &str,
+    route_observer: OpenAiRouteObserver<'_>,
 ) -> Option<proxy::RouteDispatchOutcome> {
     let (planner_name, planner_port, strong_port) = pipeline_local_ports(targets, strong_name)?;
 
@@ -768,6 +962,15 @@ async fn try_pipeline_proxy(
         strong_port,
         node,
         &capsule_nonce,
+        super::response::RouteAttemptLoggingContext {
+            exchange_id: None,
+            request_id: request.request_id,
+            response_adapter: request.response_adapter,
+            retry_policy: super::response::ResponseRetryPolicy::next_target_available(false),
+            route_observer,
+            served_by: None,
+            peer_capsule_id: None,
+        },
     )
     .await;
     match result {
@@ -834,7 +1037,7 @@ fn warn_pipeline_fallback(strong_name: &str) {
 #[allow(clippy::too_many_arguments)]
 async fn route_missing_local_model(
     tcp_stream: ClientStream,
-    request: &proxy::BufferedHttpRequest,
+    request: &mut proxy::BufferedHttpRequest,
     ctx: &IngressRouteContext<'_>,
     model_name: &str,
     target: Option<iroh::EndpointId>,
@@ -863,22 +1066,28 @@ async fn route_missing_local_model(
 
     // Try remote mesh first.
     match resolve_remote_mesh_route(ctx, model_name, target, excluded).await {
-        RemoteMeshRoute::TargetUnavailable { target_hex } => {
+        RemoteMeshRoute::TargetUnavailable {
+            target_hex,
+            blocked,
+        } => {
             // Fail closed: never substitute another peer for an explicitly
             // named `x-mesh-target` that doesn't (or no longer) serve this
             // model -- that would silently defeat the live-twin check the
-            // header exists for.
+            // header exists for. When the operator's own block is the reason
+            // the peer is absent, say so rather than implying it never served
+            // the model.
+            let message = if blocked {
+                format!(
+                    "x-mesh-target '{target_hex}' is blocked by this operator -- refusing to fall back to another peer"
+                )
+            } else {
+                format!(
+                    "x-mesh-target '{target_hex}' does not serve model '{model_name}' -- refusing to fall back to another peer"
+                )
+            };
             return response_outcome(
                 409,
-                proxy::send_error_observed(
-                    tcp_stream,
-                    409,
-                    &format!(
-                        "x-mesh-target '{target_hex}' does not serve model '{model_name}' -- refusing to fall back to another peer"
-                    ),
-                    route_observer,
-                )
-                .await,
+                proxy::send_error_observed(tcp_stream, 409, &message, route_observer).await,
             );
         }
         RemoteMeshRoute::Targets(mesh_targets) => {
@@ -899,6 +1108,8 @@ async fn route_missing_local_model(
             // both sides."
             let (forwarded_nonce, nonce_origin) = request.capsule_nonce_headers();
             let nonce_source = remote_mesh_nonce_source(&forwarded_nonce, &nonce_origin);
+            // Validated in `route_request`; copied onto both events unread.
+            let twin_bracket = twin_bracket_id(request).ok().flatten();
             // In tests, `exchange_channel` may be injected directly so the
             // publish pair is observable even when `plugin_manager` is
             // `None`. In production (and in non-test builds)
@@ -913,12 +1124,15 @@ async fn route_missing_local_model(
                 .plugin_manager
                 .map(|pm| pm as &dyn OpenAiExchangeChannel);
             if let Some(ch) = channel {
-                ch.publish(&OpenAiExchangeEnvelope::effective_remote_mesh(
-                    exchange_id.clone(),
-                    model_name,
-                    forwarded_nonce.clone(),
-                    nonce_source,
-                ))
+                ch.publish(
+                    &OpenAiExchangeEnvelope::effective_remote_mesh(
+                        exchange_id.clone(),
+                        model_name,
+                        forwarded_nonce.clone(),
+                        nonce_source,
+                    )
+                    .with_twin_bracket_id(twin_bracket.clone()),
+                )
                 .await;
             }
             // Only echoed when the client asked for a specific peer via
@@ -932,6 +1146,10 @@ async fn route_missing_local_model(
             // (that happens in whatever later pulls the capsule via a later
             // out-of-band fetch and checks its digest).
             let peer_capsule_id_sink = proxy::PeerCapsuleIdSink::new();
+            // Where `route_model_request` records which peer delivered, so the
+            // terminal names the server even when the client named no
+            // `x-mesh-target`. See `serving_provenance_for_remote_mesh`.
+            let served_by_node_id_sink = proxy::ServedByNodeIdSink::new();
             let outcome = proxy::route_model_request(
                 ctx.node.clone(),
                 tcp_stream,
@@ -939,24 +1157,41 @@ async fn route_missing_local_model(
                 model_name,
                 request,
                 proxy::RouteModelRequestContext {
+                    exchange_id: Some(&exchange_id),
                     required_tokens,
                     affinity: ctx.affinity,
                     route_observer,
                     served_by_header: served_by_hex.as_deref(),
                     peer_capsule_id: Some(&peer_capsule_id_sink),
+                    served_by_node_id: Some(&served_by_node_id_sink),
                 },
             )
             .await;
             if let Some(ch) = channel {
-                ch.publish(&OpenAiExchangeEnvelope::terminal_remote_mesh(
-                    exchange_id,
-                    model_name,
-                    plugin_route_status(&outcome),
-                    forwarded_nonce,
-                    nonce_source,
-                    peer_capsule_id_sink.take(),
-                ))
-                .await;
+                // The canonical digest of the request body this node forwarded
+                // to the peer, built the same way as on the host-served branch.
+                // `ensure_body_json` is idempotent and only paid when there is
+                // a channel to publish to.
+                request.ensure_body_json();
+                let request_digest = request
+                    .body_json
+                    .as_ref()
+                    .and_then(|body| request_body_digest(body, request.body_bytes.as_deref()));
+                let terminal = remote_delivered_terminal(
+                    RemoteDeliveredFacts {
+                        exchange_id,
+                        model_name,
+                        nonce: forwarded_nonce,
+                        nonce_source,
+                        peer_capsule_id: peer_capsule_id_sink.take(),
+                        target,
+                        observed_served_by_hex: served_by_node_id_sink.take(),
+                        request_digest,
+                        twin_bracket_id: twin_bracket,
+                    },
+                    &outcome,
+                );
+                ch.publish(&terminal).await;
             }
             return outcome;
         }
@@ -1116,7 +1351,12 @@ enum RemoteMeshRoute {
     /// `x-mesh-target` named a peer that isn't in the (possibly
     /// `x-mesh-exclude`-filtered) candidate set for this model. The caller
     /// must fail closed, never substitute a different peer.
-    TargetUnavailable { target_hex: String },
+    TargetUnavailable {
+        target_hex: String,
+        /// The operator's local block is why this peer is not a candidate
+        /// (rather than it never advertising the model).
+        blocked: bool,
+    },
     /// No remote host serves this model (after exclusion) -- fall through to
     /// local/plugin/404 handling exactly as when neither header is present.
     NoRemoteHost,
@@ -1154,6 +1394,10 @@ async fn resolve_remote_mesh_route(
         } else {
             RemoteMeshRoute::TargetUnavailable {
                 target_hex: hex::encode(target.as_bytes()),
+                blocked: ctx
+                    .node
+                    .peer_blocks
+                    .is_blocked(&target, crate::network::peer_blocks::now_ms()),
             }
         };
     }
@@ -1212,6 +1456,38 @@ fn parse_mesh_exclude_header(values: &[String]) -> Result<Vec<iroh::EndpointId>,
         }
     }
     Ok(excluded)
+}
+
+/// The longest `x-mesh-twin-bracket` value the host copies.
+const MAX_TWIN_BRACKET_LEN: usize = 128;
+
+/// Parse the (possibly repeated) `x-mesh-twin-bracket` header values. Zero
+/// values is a no-op; exactly one must be 1..=128 characters of
+/// `[A-Za-z0-9._:-]` once HTTP whitespace (SP/HTAB) is trimmed from its ends;
+/// any other whitespace, at the ends or inside, makes it malformed. More than
+/// one value is ambiguous and rejected. The value is otherwise opaque: the
+/// host copies it and never reads it.
+fn parse_twin_bracket_header(values: &[String]) -> Result<Option<String>, String> {
+    match values {
+        [] => Ok(None),
+        [only] => {
+            let value = only.trim_matches([' ', '\t']);
+            let valid = !value.is_empty()
+                && value.len() <= MAX_TWIN_BRACKET_LEN
+                && value
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | ':' | '-'));
+            valid
+                .then(|| value.to_string())
+                .map(Some)
+                .ok_or_else(|| format!("invalid x-mesh-twin-bracket value '{value}'"))
+        }
+        _ => Err("multiple x-mesh-twin-bracket headers are ambiguous".to_string()),
+    }
+}
+
+fn twin_bracket_id(request: &proxy::BufferedHttpRequest) -> Result<Option<String>, String> {
+    parse_twin_bracket_header(&request.twin_bracket_header_values()?)
 }
 
 /// Parse and validate the raw `x-mesh-target` / `x-mesh-exclude` header
@@ -1343,8 +1619,11 @@ async fn try_route_plugin_model(
                 &exchange_id,
                 model_name,
                 &final_outcome,
-                false, // plugin-served: never this node's own hardware/weights
-                request_digest.as_deref(),
+                RawProxyTerminalFacts {
+                    served_locally: false, // plugin-served: never this node's own hardware/weights
+                    request_digest: request_digest.as_deref(),
+                    requested_by_node_id: None, // no host-served provenance block on this path
+                },
             )
             .await;
             final_outcome
@@ -1410,7 +1689,9 @@ async fn route_request(
         // `x-mesh-exclude` BEFORE the local-candidate check below -- a
         // targeted or excluded request must never be silently served from
         // local candidates without ever consulting these headers.
-        let (target, excluded) = match parse_mesh_routing_headers(request) {
+        let parsed = parse_mesh_routing_headers(request)
+            .and_then(|routing| twin_bracket_id(request).map(|_| routing));
+        let (target, excluded) = match parsed {
             Ok(parsed) => parsed,
             Err(message) => {
                 return response_outcome(
@@ -1491,6 +1772,12 @@ async fn route_request(
         let served_by_hex = target
             .filter(|id| *id == self_id)
             .map(|id| hex::encode(id.as_bytes()));
+        // Election here chooses among this node AND every peer serving the
+        // model, so a delivered attempt may come from a peer. These sinks
+        // record which peer delivered (and the response marker it returned),
+        // so the terminal names the real server instead of this node.
+        let served_by_node_id_sink = proxy::ServedByNodeIdSink::new();
+        let peer_capsule_id_sink = proxy::PeerCapsuleIdSink::new();
         let outcome = proxy::route_model_request(
             ctx.node.clone(),
             tcp_stream,
@@ -1498,26 +1785,39 @@ async fn route_request(
             model_name,
             request,
             proxy::RouteModelRequestContext {
+                exchange_id: announce.as_ref().map(|(_, id)| id.as_str()),
                 required_tokens,
                 affinity: ctx.affinity,
                 route_observer,
                 served_by_header: served_by_hex.as_deref(),
-                // Not the `RemoteMesh` dispatch path -- this node is serving
-                // (or election-selecting among candidates that may include
-                // itself) the exchange, not merely routing to a peer.
-                peer_capsule_id: None,
+                peer_capsule_id: Some(&peer_capsule_id_sink),
+                served_by_node_id: Some(&served_by_node_id_sink),
             },
         )
         .await;
         if let Some((plugin_manager, exchange_id)) = announce.as_ref() {
-            publish_raw_proxy_terminal(
+            let delivered_by_peer = served_by_node_id_sink.take().map(|peer_hex| {
+                local_route_delivered_by_peer(
+                    request,
+                    exchange_id.clone(),
+                    model_name,
+                    peer_hex,
+                    peer_capsule_id_sink.take(),
+                    request_digest.clone(),
+                )
+            });
+            publish_local_route_terminal(
                 ctx.node,
                 *plugin_manager,
                 exchange_id,
                 model_name,
                 &outcome,
-                true, // host-served: this node's own weights and hardware survey
-                request_digest.as_deref(),
+                delivered_by_peer,
+                RawProxyTerminalFacts {
+                    served_locally: true, // host-served: this node's own weights and hardware survey
+                    request_digest: request_digest.as_deref(),
+                    requested_by_node_id: ctx.requested_by_node_id.as_deref(),
+                },
             )
             .await;
         }
@@ -1609,11 +1909,7 @@ async fn send_workload_unsupported(
     path: &str,
     route_observer: OpenAiRouteObserver<'_>,
 ) -> proxy::RouteDispatchOutcome {
-    let message = if is_audio_upload_path(path) {
-        "no served model advertises support for this audio-to-text endpoint".to_string()
-    } else {
-        format!("no served model advertises the required {workload:?} workload")
-    };
+    let message = unsupported_workload_message(path, workload);
     response_outcome(
         422,
         proxy::send_error_observed(tcp_stream, 422, &message, route_observer).await,
@@ -1663,6 +1959,25 @@ async fn send_auto_route_rejection(
 /// Build the sorted list of model names visible to the `/v1/models` endpoint:
 /// the remote-mesh callable set from `targets` merged with `local_models`
 /// (plugin-served and locally-launched models) with duplicates removed.
+/// The locally registered model name for a public model ID, as the free
+/// path's alias rewrite resolves it. A model served from a catalog or Hugging
+/// Face ref is registered under an internal ID (for example
+/// `local-gguf/sha256-…`) but advertised and priced under its public ID.
+#[cfg(feature = "payments")]
+pub(crate) async fn served_model_for_public_id(
+    node: &mesh::Node,
+    targets: &election::ModelTargets,
+    requested: &str,
+) -> String {
+    let callable = callable_models_with_local_served(targets, node.models_being_served().await);
+    if callable.iter().any(|model| model == requested) {
+        return requested.to_owned();
+    }
+    let descriptors = node.all_served_model_descriptors().await;
+    super::request_parse::internal_model_for_public_id(requested, &callable, &descriptors)
+        .unwrap_or_else(|| requested.to_owned())
+}
+
 fn callable_models_with_local_served(
     targets: &election::ModelTargets,
     local_models: Vec<String>,
@@ -1711,7 +2026,14 @@ fn pipeline_route_model<'a>(
         .as_ref()
         .map(pipeline::should_pipeline)
         .unwrap_or(false)
-        && request.response_adapter == proxy::ResponseAdapter::None;
+        && matches!(
+            request.response_adapter,
+            proxy::ResponseAdapter::None
+                | proxy::ResponseAdapter::OpenAiChatCompletionsJson
+                | proxy::ResponseAdapter::OpenAiChatCompletionsStream
+                | proxy::ResponseAdapter::AnthropicMessagesJson
+                | proxy::ResponseAdapter::AnthropicMessagesStream
+        );
     use_pipeline.then_some(routing_model).flatten()
 }
 
@@ -1776,7 +2098,9 @@ async fn enforce_mesh_routing_headers_before_dispatch(
     routing_model: Option<&str>,
     route_observer: OpenAiRouteObserver<'_>,
 ) -> Result<ClientStream, proxy::RouteDispatchOutcome> {
-    let (target, excluded) = match parse_mesh_routing_headers(request) {
+    let parsed = parse_mesh_routing_headers(request)
+        .and_then(|routing| twin_bracket_id(request).map(|_| routing));
+    let (target, excluded) = match parsed {
         Ok(parsed) => parsed,
         Err(message) => {
             return Err(response_outcome(
@@ -1831,9 +2155,18 @@ async fn try_pipeline_route(
     ctx: &IngressRouteContext<'_>,
     decision: &AutoRouteDecision,
     routing_model: Option<&str>,
+    route_observer: OpenAiRouteObserver<'_>,
 ) -> Option<proxy::RouteDispatchOutcome> {
     let strong_name = pipeline_route_model(request, decision, routing_model)?;
-    try_pipeline_proxy(ctx.node, tcp_stream, request, ctx.targets, strong_name).await
+    try_pipeline_proxy(
+        ctx.node,
+        tcp_stream,
+        request,
+        ctx.targets,
+        strong_name,
+        route_observer,
+    )
+    .await
 }
 
 enum MoaInterceptResult {
@@ -2077,6 +2410,7 @@ async fn handle_buffered_api_request(
         &ctx.route,
         &decision,
         routing_model.as_deref(),
+        lifecycle.route_observer(),
     )
     .await
     {
@@ -2117,8 +2451,14 @@ async fn handle_api_proxy_connection(
     targets: election::ModelTargets,
     affinity: affinity::AffinityRouter,
     ingress_type: crate::runtime::IngressType,
+    requested_by: Option<iroh::EndpointId>,
 ) {
     let source_addr = tcp_stream.peer_addr().ok();
+    // The election snapshot predates any block the operator set since; drop
+    // blocked peers here so every route below sees the same filtered set.
+    let targets = node
+        .peer_blocks
+        .without_blocked(&targets, crate::network::peer_blocks::now_ms());
     let plugin_manager = node.plugin_manager().await;
     match proxy::read_http_request_with_plugin_manager_with_context(
         &mut tcp_stream,
@@ -2132,6 +2472,7 @@ async fn handle_api_proxy_connection(
                 targets: &targets,
                 affinity: &affinity,
                 plugin_manager: plugin_manager.as_ref(),
+                requested_by_node_id: requested_by.map(|id| hex::encode(id.as_bytes())),
                 #[cfg(test)]
                 exchange_channel: None,
             };
@@ -2150,11 +2491,15 @@ async fn handle_api_proxy_connection(
     }
 }
 
+/// A request that arrived over the mesh HTTP tunnel. `remote` is the tunnel's
+/// QUIC-authenticated peer, the node that asked; it is carried onto the
+/// host-served terminal as `requested_by_node_id`.
 pub(crate) async fn handle_remote_http_stream(
     node: mesh::Node,
     stream: ClientStream,
     targets: election::ModelTargets,
     affinity: affinity::AffinityRouter,
+    remote: iroh::EndpointId,
 ) {
     handle_api_proxy_connection(
         node,
@@ -2162,6 +2507,7 @@ pub(crate) async fn handle_remote_http_stream(
         targets,
         affinity,
         crate::runtime::IngressType::RemoteQuicHttp,
+        Some(remote),
     )
     .await;
 }
@@ -2201,6 +2547,7 @@ pub(crate) async fn api_proxy(
                 targets,
                 affinity,
                 crate::runtime::IngressType::LocalOpenAi,
+                None, // local API: no requesting mesh node
             )
             .await;
         });

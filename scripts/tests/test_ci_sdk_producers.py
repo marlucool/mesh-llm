@@ -294,9 +294,11 @@ class CiSdkProducersTests(RunnerSelectorMixin, unittest.TestCase):
         self.assertIn("CACHE_NAMESPACE: mesh-llm", producer)
         self.assertIn(
             "inputs.backend, inputs.target, "
-            "steps.native_toolchain.outputs.epoch, hashFiles(",
+            "steps.native_toolchain.outputs.epoch, "
+            "steps.patched_llama.outputs.sha, hashFiles(",
             producer,
         )
+        self.assertIn("patched SHA does not match prepared llama.cpp", restore_script)
         self.assertIn("'Justfile', 'just/**'", producer)
         self.assertIn(
             "uses: ./.github/actions/resolve-native-toolchain-epoch",
@@ -722,7 +724,7 @@ class CiSdkProducersTests(RunnerSelectorMixin, unittest.TestCase):
         self.assertIn("max-parallel: ${{ inputs.max_parallel }}", producer)
         self.assertEqual(producer.count("- aarch64-apple-ios\n"), 1)
         self.assertIn(
-            'build-xcframework.sh --target "${{ matrix.target }}"',
+            'build-xcframework.sh" --target "${{ matrix.target }}"',
             producer,
         )
         self.assertIn(
@@ -739,7 +741,7 @@ class CiSdkProducersTests(RunnerSelectorMixin, unittest.TestCase):
             producer,
         )
         self.assertIn(
-            "build-xcframework.sh --assemble-from dist/swift-targets",
+            'build-xcframework.sh" --assemble-from dist/swift-targets',
             producer,
         )
         self.assertIn(
@@ -808,11 +810,8 @@ class CiSdkProducersTests(RunnerSelectorMixin, unittest.TestCase):
         targets = (
             "aarch64-apple-ios",
             "aarch64-apple-ios-sim",
-            "x86_64-apple-ios",
             "aarch64-apple-ios-macabi",
-            "x86_64-apple-ios-macabi",
             "aarch64-apple-darwin",
-            "x86_64-apple-darwin",
         )
         workflow = yaml.safe_load(producer)
         target_job = workflow["jobs"]["swift_sdk_target"]
@@ -932,14 +931,15 @@ class CiSdkProducersTests(RunnerSelectorMixin, unittest.TestCase):
             producer,
         )
         self.assertIn(
-            "shared-key: ${{ format('swift-sdk-{0}', runner.arch == 'ARM64' "
-            "&& 'aarch64-apple-darwin' || 'x86_64-apple-darwin') }}",
+            "shared-key: swift-sdk-aarch64-apple-darwin",
             producer,
         )
         self.assertIn(
-            "path: ${{ format('.deps/llama-build/build-stage-abi-{0}-metal'",
+            "path: .deps/llama-build/build-stage-abi-aarch64-apple-darwin-metal",
             producer,
         )
+        self.assertNotIn("x86_64-apple-darwin", producer)
+        self.assertNotIn("x86_64-apple-darwin", host_builder)
         self.assertNotIn("runner.arch, inputs.mode, hashFiles(", producer)
         self.assertIn(
             "uses: ./.github/actions/resolve-native-toolchain-epoch",

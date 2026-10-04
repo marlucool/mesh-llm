@@ -47,16 +47,28 @@ const ANALYTICS_CATEGORY: CategoryPresentation = CategoryPresentation {
     summary: "Anonymous usage reporting to the mesh-llm maintainers",
     order: 50,
 };
+const PAYMENTS_CATEGORY: CategoryPresentation = CategoryPresentation {
+    id: "payments",
+    label: "Payments",
+    summary: "Wallet backend used for paid inference",
+    order: 60,
+};
 const RUNTIME_POLICY_CATEGORY: CategoryPresentation = CategoryPresentation {
     id: "runtime-policy",
     label: "Runtime Policy",
     summary: "Runtime reconciliation behavior applied by the local process",
     order: 10,
 };
+const PROMPT_CACHE_CATEGORY: CategoryPresentation = CategoryPresentation {
+    id: "prompt-cache",
+    label: "Prompt Cache",
+    summary: "Node-local durable prefix cache storage and capacity",
+    order: 15,
+};
 const MEMORY_CATEGORY: CategoryPresentation = CategoryPresentation {
     id: "memory",
     label: "Memory",
-    summary: "VRAM accounting and KV cache policy",
+    summary: "VRAM accounting and KV cache precision",
     order: 20,
 };
 const SPECULATIVE_CATEGORY: CategoryPresentation = CategoryPresentation {
@@ -112,7 +124,10 @@ struct SettingPresentation {
 
 fn setting_presentation_for_path(rendered: &str) -> Option<SettingPresentation> {
     logging_presentation(rendered)
+        .or_else(|| kv_disk_presentation(rendered))
+        .or_else(|| gpu_setting_presentation(rendered))
         .or_else(|| process_setting_presentation(rendered))
+        .or_else(|| payments_presentation(rendered))
         .or_else(|| native_runtime_presentation(rendered))
         .or_else(|| runtime_defaults_presentation(rendered))
         .or_else(|| generation_defaults_presentation(rendered))
@@ -120,7 +135,69 @@ fn setting_presentation_for_path(rendered: &str) -> Option<SettingPresentation> 
         .or_else(|| model_and_plugin_presentation(rendered))
 }
 
-fn process_setting_presentation(rendered: &str) -> Option<SettingPresentation> {
+fn kv_disk_presentation(rendered: &str) -> Option<SettingPresentation> {
+    match rendered {
+        "runtime.kv_cache.disk.mode" => Some(
+            sp(
+                "Disk prompt cache",
+                "Keep compatible prompt state on local disk across model reloads and process restarts.",
+                PROMPT_CACHE_CATEGORY,
+                10,
+            )
+            .hint("segmented")
+            .choices(&[
+                ("off", "Off", "Do not read or write the disk cache."),
+                ("auto", "Automatic", "Derive a bounded budget from available local storage."),
+                ("fixed", "Fixed", "Use the configured hard budget."),
+            ]),
+        ),
+        "runtime.kv_cache.disk.directory" => Some(
+            sp(
+                "Cache directory",
+                "Absolute node-local directory used for durable prompt-cache data.",
+                PROMPT_CACHE_CATEGORY,
+                20,
+            )
+            .placeholder("/fast-disk/mesh-kv-cache")
+            .hint("text"),
+        ),
+        "runtime.kv_cache.disk.budget_mib" => Some(
+            sp(
+                "Fixed cache budget",
+                "Hard whole-node disk-cache budget used only in fixed mode.",
+                PROMPT_CACHE_CATEGORY,
+                30,
+            )
+            .unit("MiB")
+            .hint("number"),
+        ),
+        "runtime.kv_cache.disk.minimum_free_mib" => Some(
+            sp(
+                "Minimum free space",
+                "Free local storage Mesh preserves before accepting cache writes.",
+                PROMPT_CACHE_CATEGORY,
+                40,
+            )
+            .unit("MiB")
+            .hint("number"),
+        ),
+        "runtime.kv_cache.disk.codec" => Some(
+            sp(
+                "Disk cache codec",
+                "Persist native KV pages or qualified CacheGen archives. CacheGen currently activates only for validated Metal cache types.",
+                PROMPT_CACHE_CATEGORY,
+                50,
+            )
+            .choices(&[
+                ("native", "Native", "Persist exact native KV pages."),
+                ("cachegen", "CacheGen", "Use CacheGen for qualified Metal KV layouts."),
+            ]),
+        ),
+        _ => None,
+    }
+}
+
+fn gpu_setting_presentation(rendered: &str) -> Option<SettingPresentation> {
     match rendered {
         "gpu.assignment" => Some(sp(
             "GPU assignment",
@@ -137,6 +214,19 @@ fn process_setting_presentation(rendered: &str) -> Option<SettingPresentation> {
         )
         .unit("models")
         .hint("number")),
+        "gpu.host_ram_offload" => Some(sp(
+            "Host RAM offload",
+            "Let this node load models that only fit by spilling from GPU memory into system RAM. Off by default: such models run an order of magnitude slower. The capacity advertised to the mesh never includes RAM.",
+            RUNTIME_CATEGORY,
+            30,
+        )
+        .hint("toggle")),
+        _ => None,
+    }
+}
+
+fn process_setting_presentation(rendered: &str) -> Option<SettingPresentation> {
+    match rendered {
         "analytics.enabled" => Some(sp(
             "Anonymous usage reporting",
             "Report anonymous usage (version, platform, command names, node and model counts) to the mesh-llm maintainers. Never includes prompts, completions, file paths, or peer addresses. Turning this setting off is equivalent to `mesh-llm analytics disable`.",
@@ -250,7 +340,7 @@ fn process_setting_presentation(rendered: &str) -> Option<SettingPresentation> {
         "runtime.lifecycle_log_parser" => Some(
             sp(
                 "Lifecycle log parser",
-                "Use parsed native log summaries only when the loaded runtime lacks the matching structured event family. Enabled forces compatibility output; disabled proves structured coverage.",
+                "Auto forwards parsed native log summaries only for categories the loaded runtime cannot report through structured events; a dedicated SafeTensors compatibility note remains visible without forwarding every model summary. Enabled forwards parsed summaries for every category as debug-only output. Disabled forwards none.",
                 RUNTIME_POLICY_CATEGORY,
                 5,
             )
@@ -321,6 +411,22 @@ fn process_setting_presentation(rendered: &str) -> Option<SettingPresentation> {
     }
 }
 
+fn payments_presentation(rendered: &str) -> Option<SettingPresentation> {
+    match rendered {
+        "payments.wallet" => Some(
+            sp(
+                "Wallet plugin",
+                "Plugin name of the wallet that backs paid inference. When unset, the only running wallet plugin is used.",
+                PAYMENTS_CATEGORY,
+                10,
+            )
+            .placeholder("lexe-wallet")
+            .hint("text"),
+        ),
+        _ => None,
+    }
+}
+
 fn native_runtime_presentation(rendered: &str) -> Option<SettingPresentation> {
     match rendered {
         "runtime.native_runtime.selection" => Some(
@@ -385,6 +491,15 @@ fn runtime_defaults_presentation(rendered: &str) -> Option<SettingPresentation> 
             30,
         )
         .hint("segmented")),
+        "defaults.throughput.pipeline_decode_groups" => Some(sp(
+            "Pipeline decode groups",
+            "Split each decode wave into this many groups so a pipelined split keeps more \
+             than one batch in flight. 1 disables grouping.",
+            RUNTIME_CATEGORY,
+            32,
+        )
+        .unit("groups")
+        .hint("range")),
         "defaults.hardware.gpu_layers" => Some(sp(
             "GPU layers",
             "Set the GPU layer count, or use auto. The backend also accepts -1 to mean all layers.",
@@ -424,19 +539,11 @@ fn runtime_defaults_presentation(rendered: &str) -> Option<SettingPresentation> 
         )
         .placeholder("cuda:0 or CUDA0")
         .hint("text")),
-        "defaults.model_fit.kv_cache_policy" => Some(sp(
-            "KV cache policy",
-            "Select how aggressively KV cache precision is reduced to fit larger contexts.",
-            MEMORY_CATEGORY,
-            10,
-        )
-        .hint("segmented")
-        .renderer("kv-cache-policy")),
         "defaults.hardware.safety_margin_gb" => Some(sp(
             "Memory / safety margin",
             "Keep this much GPU memory free before placement fit checks pass.",
             MEMORY_CATEGORY,
-            20,
+            10,
         )
         .unit("GB")
         .hint("range")),
@@ -458,7 +565,7 @@ fn runtime_defaults_presentation(rendered: &str) -> Option<SettingPresentation> 
         .hint("range")),
         "defaults.model_fit.ubatch" => Some(sp(
             "Micro-batch size",
-            "Set the default decode micro-batch size.",
+            "Set the default micro-batch (physical prefill chunk) size. Values at or below 128 keep the CUDA SSM sequential-scan fallback; larger values enable the SSD chunked kernel for recurrent models.",
             MEMORY_CATEGORY,
             50,
         )
@@ -580,7 +687,7 @@ fn generation_defaults_presentation(rendered: &str) -> Option<SettingPresentatio
         "defaults.request_defaults.repeat_last_n" => Some(
             sp(
                 "Repeat last-n window",
-                "Set how much recent token history the repeat penalty checks.",
+                "Set how many recent tokens the repeat penalty checks (default 64, 0 disables).",
                 REQUEST_DEFAULTS_CATEGORY,
                 60,
             )
@@ -809,6 +916,24 @@ fn model_and_plugin_presentation(rendered: &str) -> Option<SettingPresentation> 
             )
             .hint("toggle"),
         ),
+        "plugin.<plugin-name>.web_ui_primary_tab" => Some(
+            sp(
+                "Primary tab placement",
+                "Promote the plugin's web UI page to a primary top-level tab when its manifest requests it.",
+                PLUGIN_HOST_CATEGORY,
+                16,
+            )
+            .hint("toggle"),
+        ),
+        "plugin.<plugin-name>.allow_peer_blocks" => Some(
+            sp(
+                "Peer block requests",
+                "Let the plugin ask this node to stop (or resume) routing to a peer. Off unless turned on.",
+                PLUGIN_HOST_CATEGORY,
+                17,
+            )
+            .hint("toggle"),
+        ),
         "plugin.<plugin-name>.url" => Some(
             sp(
                 "Base URL",
@@ -1016,6 +1141,9 @@ fn fallback_category_for_path(rendered: &str) -> Option<CategoryPresentation> {
     }
     if rendered.starts_with("owner_control.") {
         return Some(NETWORK_CATEGORY);
+    }
+    if rendered.starts_with("payments.") {
+        return Some(PAYMENTS_CATEGORY);
     }
     if rendered.starts_with("mesh_requirements.") {
         return Some(ATTESTATION_CATEGORY);

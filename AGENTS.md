@@ -235,7 +235,7 @@ The workspace lives under `crates/`. The most important crates:
 
 Shipped binary and CLI surface:
 
-- `mesh-llm/` — shipped binary; `main.rs` builds the Tokio runtime, `lib.rs` owns `run_main` (CLI parse → one-shot command dispatch via its `commands/` module → runtime handoff), and re-exports `mesh-llm-host-runtime` as a transitional shim. No domain logic here.
+- `mesh-llm/` — shipped binary; `main.rs` builds the Tokio runtime, `lib.rs` owns `run_main` (CLI parse → one-shot command dispatch via its `commands/` module → runtime handoff). No domain logic here.
 - `mesh-llm-cli/` — Clap types, argument parsing, serve/client surface normalization. No handlers.
 - `mesh-llm-commands/` — user-facing command handlers (auth, gpus, update, skills, agent launchers like goose/pi/opencode/claude, plugin, benchmark, model packaging).
 - `mesh-llm-tui/` — terminal UI and progress output surface.
@@ -440,7 +440,7 @@ Host runtime (main monolith — `crates/mesh-llm-host-runtime/src/`):
 Shipped binary and CLI (`crates/mesh-llm/src/`, `crates/mesh-llm-cli/src/`, `crates/mesh-llm-commands/src/`):
 
 - `mesh-llm/src/main.rs` — builds the Tokio runtime (custom stack size via `MESH_TOKIO_STACK_SIZE`) and calls `mesh_llm::run_main()`.
-- `mesh-llm/src/lib.rs` — `run_main`: CLI parse, one-shot command dispatch, runtime handoff; plus a transitional `pub use mesh_llm_host_runtime::*;` re-export.
+- `mesh-llm/src/lib.rs` — `run_main`: CLI parse, one-shot command dispatch, runtime handoff.
 - `mesh-llm/src/commands/` — dispatch wiring from parsed `Command` values to handlers.
 - `mesh-llm-cli/src/parser.rs` — Clap surface, serve/client arg normalization, advanced help.
 - `mesh-llm-commands/src/` — user-facing handlers (auth, gpus, update, skills, agent launchers, plugin, benchmark).
@@ -661,7 +661,7 @@ Pull request titles and descriptions should be user-focused by default.
 
 ```bash
 just bundle    # /tmp/mesh-llm-bundle.tar.gz — single mesh-llm binary
-# scp bundle to remote, tar xzf, then on macOS: codesign -s - mesh-llm && xattr -cr <dir>
+# scp bundle to remote, tar xzf; on macOS verify with codesign --verify --verbose=2 and re-sign ad hoc (-s -) only if verification fails
 ```
 
 For the full per-platform deploy flows, see the repo skills
@@ -707,10 +707,11 @@ bash -c './target/debug/mesh-llm serve --model "..." --auto > /tmp/mesh.log 2>&1
 2. `just build && just bundle`
 3. Kill ALL processes on ALL nodes — `pkill -9 -f mesh-llm`
 4. Verify clean — `ps -eo pid,args | grep -E 'mesh-llm' | grep -v grep` must be empty.
-5. Deploy bundle — scp + tar + codesign on remote nodes.
-6. On every macOS node, complete the `deploy-macos` skill's Local Network
-   privacy preflight for the exact signed identity and launch context. Clear any
-   blocking desktop alert before remote diagnosis.
+5. Deploy bundle — scp + tar on remote nodes; verify the signature and re-sign
+   ad hoc only if verification fails.
+6. If a macOS same-LAN join or split fails, peers connect only via relay, or a
+   desktop Local Network alert appears, follow the `deploy-macos` Local Network
+   troubleshooting section before diagnosing iroh. It is not a routine preflight.
 7. Verify version — `mesh-llm --version` on every node.
 
 ### After starting nodes

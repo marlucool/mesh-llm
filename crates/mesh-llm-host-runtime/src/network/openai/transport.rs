@@ -26,10 +26,10 @@ pub use super::request_parse::{
     read_http_request, rewrite_model_field, rewrite_public_model_alias,
 };
 pub(crate) use super::response::{
-    PeerCapsuleIdSink, PipelineCapsuleNonce, PipelineProxyResult, append_safe_header,
-    pipeline_proxy_local, send_400_observed, send_409_observed, send_503_observed,
-    send_error_observed, send_json_ok_with_headers, send_json_with_status_and_headers_observed,
-    send_models_list_with_descriptors,
+    PeerCapsuleIdSink, PipelineCapsuleNonce, PipelineProxyResult, ServedByNodeIdSink,
+    append_safe_header, pipeline_proxy_local, send_400_observed, send_409_observed,
+    send_503_observed, send_error_observed, send_json_ok_with_headers,
+    send_json_with_status_and_headers_observed, send_models_list_with_descriptors,
 };
 pub(crate) use super::routing_rank::{capabilities_for_model, request_budget_tokens_from_parts};
 
@@ -120,7 +120,9 @@ pub(super) fn record_moa_stream_lifecycle(
 ) {
     if !matches!(
         adapter,
-        ResponseAdapter::OpenAiChatCompletionsStream | ResponseAdapter::OpenAiResponsesStream
+        ResponseAdapter::OpenAiChatCompletionsStream
+            | ResponseAdapter::OpenAiResponsesStream
+            | ResponseAdapter::AnthropicMessagesStream
     ) {
         return;
     }
@@ -232,9 +234,16 @@ pub(crate) async fn reject_legacy_lifecycle_request(
 /// Generation context cannot be estimated from every request body's byte size.
 /// Tokenizer requests use no target KV context, and multipart audio bodies
 /// contain encoded media rather than text tokens. The audio backend performs
-/// the authoritative media/context validation after routing.
+/// the authoritative media/context validation after routing. A System One read
+/// fits `state` into each question's bounded sequence (Laya truncates it to its
+/// `max_len`; DiffusionGemma refuses a prompt its context cannot hold), so the
+/// backend is the authority there too.
 pub(crate) fn request_context_budget(request: &BufferedHttpRequest) -> Option<u32> {
-    if request.is_tokenize_request() || request.is_audio_upload_request() {
+    if request.is_tokenize_request()
+        || request.is_anthropic_count_tokens_request()
+        || request.is_audio_upload_request()
+        || request.is_system_one_request()
+    {
         None
     } else {
         request_budget_tokens_from_parts(request.body_len_bytes, request.completion_tokens)
@@ -264,6 +273,7 @@ struct MeshRequestPlan {
 }
 
 enum MeshRequestFailure {
+    PaymentRequired(&'static str),
     UnsupportedMedia,
     UnsupportedWorkload,
     ModelUnavailable(String),
@@ -342,7 +352,14 @@ async fn handle_mesh_control_request(
         let runtimes = node.all_model_runtime_descriptors().await;
         let outcome = response_outcome(
             200,
-            send_models_list_with_descriptors(tcp_stream, &served, &descriptors, &runtimes).await,
+            send_models_list_with_descriptors(
+                tcp_stream,
+                &served,
+                &descriptors,
+                &runtimes,
+                Some(node),
+            )
+            .await,
         );
         lifecycle.terminal(outcome.terminal_outcome());
         return None;
@@ -585,13 +602,7 @@ async fn build_mesh_request_plan(
         }
     };
     if let Some(model) = effective_model.as_deref()
-        && let Some(workload) = workload_routing::request_workload_class(&request.client_path)
-        && !workload_routing::model_satisfies_request_workload(
-            model,
-            workload,
-            &request.client_path,
-            &descriptors,
-        )
+        && !workload_routing::model_satisfies_request(model, &request.client_path, &descriptors)
     {
         return Err(MeshRequestFailure::UnsupportedWorkload);
     }
@@ -618,7 +629,12 @@ async fn build_mesh_request_plan(
         resolved_hosts
     };
     if resolved_hosts.is_empty() {
-        return Err(MeshRequestFailure::UnsupportedWorkload);
+        // Fleet-wide admission already rejected a workload no descriptor
+        // advertises, so an empty set here means the resolved hosts dropped out
+        // of the eligible set — a peer that vanished between discovery and this
+        // filter, most often. That is transient routing state, not a client
+        // request error, so answer with the no-hosts path the resolver uses.
+        return Err(MeshRequestFailure::NoHostsAvailable);
     }
 
     let mut prepared = prepare_mesh_targets(
@@ -627,7 +643,7 @@ async fn build_mesh_request_plan(
         &resolved_hosts,
         affinity,
     );
-    let (target_hosts, equivalent_hosts) = order_mesh_target_hosts(
+    let (mut target_hosts, mut equivalent_hosts) = order_mesh_target_hosts(
         node,
         effective_model.as_deref(),
         required_tokens,
@@ -635,6 +651,18 @@ async fn build_mesh_request_plan(
         affinity,
     )
     .await;
+    if let Some(model) = effective_model.as_deref() {
+        let payment_ranked = super::payment_routing::rank_remote_hosts(
+            node,
+            model,
+            request,
+            &mut target_hosts,
+            &mut equivalent_hosts,
+        )
+        .await
+        .map_err(MeshRequestFailure::PaymentRequired)?;
+        prepared.affinity_applied |= payment_ranked;
+    }
     Ok(MeshRequestPlan {
         effective_model,
         auto_session_key,
@@ -747,6 +775,10 @@ async fn handle_mesh_request_failure(
 ) {
     let mut tcp_stream = Some(tcp_stream);
     match failure {
+        MeshRequestFailure::PaymentRequired(reason) => {
+            let _ =
+                send_error_observed(tcp_stream.take().unwrap(), 402, reason, route_observer).await;
+        }
         MeshRequestFailure::UnsupportedWorkload => {
             let _ = send_error_observed(
                 tcp_stream.take().unwrap(),
@@ -829,6 +861,7 @@ async fn route_mesh_request_attempts(
             &request.raw,
             ResponseRetryPolicy::next_target_available(idx + 1 < total_targets),
             RouteAttemptLoggingContext {
+                exchange_id: None,
                 request_id: request.request_id,
                 retry_policy: ResponseRetryPolicy::next_target_available(idx + 1 < total_targets),
                 response_adapter: request.response_adapter,
@@ -961,6 +994,8 @@ fn proxy_provider_for_target(target: &'static str) -> Option<&'static str> {
 
 fn proxy_engine_for_response_adapter(adapter: ResponseAdapter) -> Option<&'static str> {
     match adapter {
+        ResponseAdapter::AnthropicMessagesJson => Some("messages"),
+        ResponseAdapter::AnthropicMessagesStream => Some("messages_stream"),
         ResponseAdapter::None => None,
         ResponseAdapter::OpenAiChatCompletionsJson => Some("chat_completion"),
         ResponseAdapter::OpenAiChatCompletionsStream => Some("chat_completion_stream"),
@@ -1132,6 +1167,9 @@ fn terminal_outcome_for_mesh_request_failure(
     failure: &MeshRequestFailure,
 ) -> crate::logging::TerminalOutcome {
     match failure {
+        MeshRequestFailure::PaymentRequired(_) => {
+            crate::logging::TerminalOutcome::Rejected(Some("payment_required".into()))
+        }
         MeshRequestFailure::UnsupportedWorkload => {
             crate::logging::TerminalOutcome::Rejected(Some("unsupported_workload".into()))
         }
@@ -1290,7 +1328,8 @@ async fn resolve_auto_model_request(args: AutoModelRequestArgs<'_>) -> AutoModel
     let with_caps =
         workload_routing::routing_candidates(node, served, &request.client_path, descriptors);
     if with_caps.is_empty()
-        && workload_routing::request_workload_class(&request.client_path).is_some()
+        && (workload_routing::request_workload_class(&request.client_path).is_some()
+            || workload_routing::is_system_one_path(&request.client_path))
     {
         return AutoModelResolution::UnsupportedWorkload;
     }
@@ -1633,6 +1672,7 @@ pub async fn route_to_target(
         prefetched,
         retry_policy,
         RouteAttemptLoggingContext {
+            exchange_id: None,
             request_id,
             retry_policy,
             response_adapter,
@@ -1727,6 +1767,7 @@ pub async fn route_http_endpoint_request(
         &request.raw,
         &request.path,
         RouteAttemptLoggingContext {
+            exchange_id: None,
             request_id: request.request_id,
             retry_policy: ResponseRetryPolicy::next_target_available(false),
             response_adapter: request.response_adapter,
@@ -1805,3 +1846,88 @@ pub async fn route_http_endpoint_request(
 #[cfg(test)]
 #[path = "transport_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "payments"))]
+pub(crate) async fn test_paid_target_attempt(
+    node: &mesh::Node,
+    client: &mut ClientStream,
+    peer: iroh::EndpointId,
+    raw: &[u8],
+    exchange_id: &str,
+) -> bool {
+    let result = route_attempt_for_target(
+        node,
+        client,
+        &election::InferenceTarget::Remote(peer),
+        raw,
+        ResponseRetryPolicy::next_target_available(true),
+        RouteAttemptLoggingContext {
+            exchange_id: Some(exchange_id),
+            request_id: Default::default(),
+            retry_policy: ResponseRetryPolicy::next_target_available(true),
+            response_adapter: ResponseAdapter::None,
+            route_observer: OpenAiRouteObserver::default(),
+            served_by: None,
+            peer_capsule_id: None,
+        },
+    )
+    .await;
+    should_retry_uncommitted_remote_attempt(result)
+}
+
+#[cfg(all(test, feature = "payments"))]
+pub(crate) async fn test_paid_multi_target(
+    node: mesh::Node,
+    client: ClientStream,
+    peers: Vec<iroh::EndpointId>,
+) -> RouteDispatchOutcome {
+    let body = serde_json::json!({"model":"test","prompt":"hi","max_tokens":8});
+    let bytes = serde_json::to_vec(&body).unwrap();
+    let request = BufferedHttpRequest {
+        raw: format!(
+            "POST /v1/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\n\r\n{}",
+            bytes.len(),
+            body
+        )
+        .into_bytes(),
+        method: "POST".into(),
+        path: "/v1/completions".into(),
+        client_path: "/v1/completions".into(),
+        request_id: Default::default(),
+        body_json: Some(body),
+        body_json_attempted: true,
+        body_len_bytes: bytes.len(),
+        body_bytes: Some(bytes),
+        completion_tokens: Some(8),
+        stream: None,
+        model_name: Some("test".into()),
+        request_object_request_ids: vec![],
+        response_adapter: ResponseAdapter::None,
+        correlation_id: None,
+    };
+    let mut targets = election::ModelTargets::default();
+    targets.targets.insert(
+        "test".into(),
+        peers
+            .into_iter()
+            .map(election::InferenceTarget::Remote)
+            .collect(),
+    );
+    route_model_request(
+        node,
+        client,
+        &targets,
+        "test",
+        &request,
+        RouteModelRequestContext {
+            exchange_id: Some("multi-provider-exchange"),
+            required_tokens: None,
+            affinity: &AffinityRouter::new(),
+            route_observer: OpenAiRouteObserver::default(),
+            served_by_header: None,
+            peer_capsule_id: None,
+            served_by_node_id: None,
+        },
+    )
+    .await
+}

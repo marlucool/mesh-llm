@@ -260,6 +260,7 @@ fn config_sync_state_revision_monotonic() {
     let make_config = |model: &str| MeshConfig {
         version: Some(1),
         gpu: GpuConfig {
+            host_ram_offload: None,
             assignment: GpuAssignment::Auto,
             parallel: None,
         },
@@ -284,6 +285,7 @@ fn config_sync_state_revision_monotonic() {
         }],
         plugins: vec![],
         logging: Default::default(),
+        payments: Default::default(),
         extra: Default::default(),
     };
 
@@ -308,6 +310,7 @@ fn config_sync_state_hash_changes_on_different_config() {
     let config_with_model = MeshConfig {
         version: Some(1),
         gpu: GpuConfig {
+            host_ram_offload: None,
             assignment: GpuAssignment::Auto,
             parallel: None,
         },
@@ -332,6 +335,7 @@ fn config_sync_state_hash_changes_on_different_config() {
         }],
         plugins: vec![],
         logging: Default::default(),
+        payments: Default::default(),
         extra: Default::default(),
     };
     state.apply(config_with_model, 0);

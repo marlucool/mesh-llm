@@ -12,6 +12,9 @@ import tarfile
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
+
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +46,9 @@ class CiArtifactActionTests(unittest.TestCase):
             f"Mesh-LLM/mesh-llm/.github/workflows/ci-{lane}-lane.yml@main": f"pr_{lane}.yml"
             for lane in ("quality", "website", "linux", "macos", "windows")
         }
+        protected_pr_lanes[
+            "Mesh-LLM/mesh-llm/.github/workflows/ci-pr-canary-lane.yml@main"
+        ] = "pr_ci_canary.yml"
         protected_pre_checkout_action = (
             "Mesh-LLM/mesh-llm/.github/actions/"
             "audit-depot-pr-isolation@ed07043b84d720aab30e75ed2f038f7042576f16"
@@ -568,8 +574,8 @@ class CiArtifactActionTests(unittest.TestCase):
         cpu_routing = routing[: routing.index("WINDOWS_GPU_INPUTS=")]
         gpu_routing = routing[routing.index("WINDOWS_GPU_INPUTS=") :]
 
-        self.assertIn("^crates/mesh-llm-release-footer/", cpu_routing)
-        self.assertNotIn("^crates/mesh-llm-release-footer/", gpu_routing)
+        self.assertIn("^(mesh/|skippy/)?crates/mesh-llm-release-footer/", cpu_routing)
+        self.assertNotIn("^(mesh/|skippy/)?crates/mesh-llm-release-footer/", gpu_routing)
         self.assertIn("package-release", cpu_routing)
         self.assertIn("package-release", gpu_routing)
         for workflow in (
@@ -1293,9 +1299,11 @@ class CiArtifactActionTests(unittest.TestCase):
         self.assertIn("CACHE_NAMESPACE: mesh-llm", producer)
         self.assertIn(
             "inputs.backend, inputs.target, "
-            "steps.native_toolchain.outputs.epoch, hashFiles(",
+            "steps.native_toolchain.outputs.epoch, "
+            "steps.patched_llama.outputs.sha, hashFiles(",
             producer,
         )
+        self.assertIn("patched SHA does not match prepared llama.cpp", restore_script)
         self.assertIn("'Justfile', 'just/**'", producer)
         self.assertIn(
             "uses: ./.github/actions/resolve-native-toolchain-epoch",
@@ -1398,6 +1406,23 @@ class CiArtifactActionTests(unittest.TestCase):
         self.assertIn("prepare-static-abi-input", routing)
         self.assertIn("restore-static-abi-input", routing)
         self.assertIn("static-abi-artifact", routing)
+
+    def test_macos_static_abi_cache_tracks_prepared_llama_revision(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "ci-platform-checks-slice.yml"
+        ).read_text(encoding="utf-8")
+        prepare = workflow.index("name: Prepare patched llama.cpp ABI checkout")
+        identify = workflow.index("name: Identify patched llama.cpp for cache reuse")
+        restore = workflow.index("name: Restore static Metal ABI build")
+        self.assertLess(prepare, identify)
+        self.assertLess(identify, restore)
+        cache_key = next(
+            line for line in workflow.splitlines()
+            if "-skippy-abi-static-metal-" in line and "key:" in line
+        )
+        self.assertIn("steps.patched_llama.outputs.sha", cache_key)
+        self.assertIn("skippy/llama_cpp/patches/**", cache_key)
+        self.assertIn(".deps/llama.cpp/.mesh-llm-patched-sha", workflow)
 
     def test_protected_reusable_producers_own_runner_and_cache_policy(
         self,
@@ -1721,7 +1746,7 @@ class CiArtifactActionTests(unittest.TestCase):
         self.assertIn("max-parallel: ${{ inputs.max_parallel }}", producer)
         self.assertEqual(producer.count("- aarch64-apple-ios\n"), 1)
         self.assertIn(
-            'build-xcframework.sh --target "${{ matrix.target }}"',
+            'build-xcframework.sh" --target "${{ matrix.target }}"',
             producer,
         )
         self.assertIn(
@@ -1738,7 +1763,7 @@ class CiArtifactActionTests(unittest.TestCase):
             producer,
         )
         self.assertIn(
-            "build-xcframework.sh --assemble-from dist/swift-targets",
+            'build-xcframework.sh" --assemble-from dist/swift-targets',
             producer,
         )
         self.assertIn(
@@ -1807,11 +1832,8 @@ class CiArtifactActionTests(unittest.TestCase):
         targets = (
             "aarch64-apple-ios",
             "aarch64-apple-ios-sim",
-            "x86_64-apple-ios",
             "aarch64-apple-ios-macabi",
-            "x86_64-apple-ios-macabi",
             "aarch64-apple-darwin",
-            "x86_64-apple-darwin",
         )
         assembly_only_retry = [
             f"swift-sdk-target-{target}-1" for target in targets
@@ -1921,14 +1943,15 @@ class CiArtifactActionTests(unittest.TestCase):
             producer,
         )
         self.assertIn(
-            "shared-key: ${{ format('swift-sdk-{0}', runner.arch == 'ARM64' "
-            "&& 'aarch64-apple-darwin' || 'x86_64-apple-darwin') }}",
+            "shared-key: swift-sdk-aarch64-apple-darwin",
             producer,
         )
         self.assertIn(
-            "path: ${{ format('.deps/llama-build/build-stage-abi-{0}-metal'",
+            "path: .deps/llama-build/build-stage-abi-aarch64-apple-darwin-metal",
             producer,
         )
+        self.assertNotIn("x86_64-apple-darwin", producer)
+        self.assertNotIn("x86_64-apple-darwin", host_builder)
         self.assertNotIn("runner.arch, inputs.mode, hashFiles(", producer)
         self.assertIn(
             "uses: ./.github/actions/resolve-native-toolchain-epoch",
@@ -2154,8 +2177,51 @@ class CiArtifactActionTests(unittest.TestCase):
             "product must contain exactly its manifest-selected runtime",
             action,
         )
+        self.assertIn('runtime_path="${runtime_path%$\'\\r\'}"', action)
         self.assertIn("scripts/verify-native-runtime-package.sh", action)
         self.assertIn("--check", action)
+        self.assertIn("sys.stdout.buffer.write(", action)
+        self.assertIn(
+            '("\\t".join((version, backend, host_path, runtime_path)) + "\\n").encode()',
+            action,
+        )
+
+    @unittest.skipUnless(os.name == "posix", "requires Bash")
+    def test_smoke_restore_extracts_composed_product(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            with mock.patch.dict(os.environ, {"COPYFILE_DISABLE": "1"}):
+                result = self.run_product_composer(workspace)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            artifact = workspace / "artifact"
+            artifact.mkdir()
+            shutil.copy2(workspace / "product-input.tar.gz", artifact)
+            action = yaml.safe_load(self.read_action("restore-smoke-inputs"))
+            extract_step = next(
+                step for step in action["runs"]["steps"]
+                if step["name"] == "Extract and verify composed product"
+            )
+            script = extract_step["run"]
+            for name, value in {
+                "artifact_path": str(artifact),
+                "binary_name": "mesh-llm",
+                "expected_backend": "cpu",
+            }.items():
+                script = script.replace(f"${{{{ inputs.{name} }}}}", value)
+            result = subprocess.run(
+                [
+                    "/bin/bash", "--noprofile", "--norc", "-e",
+                    "-o", "pipefail", "-c", script,
+                ],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((artifact / "mesh-llm").is_file())
+            self.assertTrue((artifact / "product-manifest.json").is_file())
 
     def test_test_model_restore_is_optional_and_verified(self) -> None:
         """The shared model action: resolve, cache, download, verify.

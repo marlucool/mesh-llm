@@ -5,8 +5,16 @@ impl RuntimeState {
         &mut self,
         target_idle_sessions: usize,
     ) -> Result<RuntimeSessionStats> {
-        let target_idle_sessions =
-            capped_target_idle_sessions(target_idle_sessions, self.max_idle_sessions);
+        // A System One read claims the model's execution lane itself; an idle
+        // session parked on it would make every read fail as busy. Drain any
+        // retained sessions defensively and keep the pool capped at zero so a
+        // later non-System-One request cannot park a lane again.
+        let target_idle_sessions = if self.serves_system_one() {
+            self.disable_idle_sessions();
+            0
+        } else {
+            capped_target_idle_sessions(target_idle_sessions, self.max_idle_sessions)
+        };
         while self.idle_sessions.len() < target_idle_sessions {
             if self.sessions.len() + self.idle_sessions.len() >= self.lane_count as usize {
                 break;
@@ -15,6 +23,54 @@ impl RuntimeState {
             self.idle_sessions.push(lane_session);
         }
         Ok(self.session_stats())
+    }
+
+    /// Only DiffusionGemma reports a System One canvas.
+    pub(crate) fn serves_system_one(&self) -> bool {
+        self.model.system_one_canvas_length().is_ok()
+    }
+
+    /// Whether this loaded runtime can execute the System One endpoint, not
+    /// merely whether its model has a decision canvas.
+    pub(crate) fn supports_system_one_endpoint(&self) -> bool {
+        system_one_endpoint_is_runnable(
+            self.serves_system_one(),
+            self.model.input_activation_boundary().is_some(),
+            self.model.output_activation_boundary().is_some(),
+            self.lane_count,
+        )
+    }
+
+    fn disable_idle_sessions(&mut self) {
+        while let Some(lane_session) = self.idle_sessions.pop() {
+            let lane_index = lane_session.index;
+            drop(lane_session);
+            self.free_lane_indices.push(lane_index);
+        }
+        self.max_idle_sessions = Some(0);
+    }
+
+    pub(crate) fn warmup_generation_graph(&self) -> Result<bool> {
+        if self.model.input_activation_boundary().is_some()
+            || self.model.output_activation_boundary().is_some()
+        {
+            return Ok(false);
+        }
+        // DiffusionGemma runs non-causally with no KV memory, so a decode
+        // step has no graph to warm and the reset would fail.
+        if self.serves_system_one() {
+            return Ok(false);
+        }
+        let token_id = self
+            .model
+            .tokenize("", true)?
+            .into_iter()
+            .next()
+            .unwrap_or(0);
+        let mut session = self.model.create_session()?;
+        session.decode_step(token_id)?;
+        session.reset()?;
+        Ok(true)
     }
 
     /// Release the session slot identified by `session_id`.
@@ -144,6 +200,12 @@ impl RuntimeState {
     pub fn session_stats(&self) -> RuntimeSessionStats {
         let mut max_session_tokens = 0u64;
         let mut total_session_tokens = 0u64;
+        // Graph reuse is the single biggest lever on split decode throughput and
+        // was previously invisible to the host: llama counts it, but the counter
+        // stopped at the C++ boundary, so the hit rate could only be inferred
+        // from throughput deltas between builds.
+        let mut graphs_reused = 0u64;
+        let mut tokens_evaluated = 0u64;
         let mut lanes = (0..self.lane_count as usize)
             .map(|index| RuntimeSessionLaneStats {
                 index,
@@ -154,6 +216,10 @@ impl RuntimeState {
             .collect::<Vec<_>>();
 
         for (session_id, lane_session) in &self.sessions {
+            if let Some(stats) = lane_session.session.graph_reuse_stats() {
+                graphs_reused = graphs_reused.saturating_add(stats.graphs_reused);
+                tokens_evaluated = tokens_evaluated.saturating_add(stats.tokens_evaluated);
+            }
             if let Some(token_count) = self.session_token_counts.get(session_id).copied() {
                 max_session_tokens = max_session_tokens.max(token_count);
                 total_session_tokens = total_session_tokens.saturating_add(token_count);
@@ -177,6 +243,8 @@ impl RuntimeState {
             tracked_token_counts: self.session_token_counts.len(),
             max_session_tokens,
             total_session_tokens,
+            graphs_reused,
+            tokens_evaluated,
             lanes,
         }
     }
@@ -305,6 +373,25 @@ impl RuntimeState {
         Ok(())
     }
 
+    pub fn import_cachegen_kv_page(
+        &mut self,
+        session_id: &str,
+        desc: &RuntimeKvPageDesc,
+        archive: &[u8],
+    ) -> Result<()> {
+        let session = self.session(session_id)?;
+        session.import_cachegen_kv_page(desc, archive)?;
+        let token_end = desc
+            .token_start
+            .checked_add(desc.token_count)
+            .ok_or_else(|| anyhow::anyhow!("CacheGen KV page token range overflows"))?;
+        self.session_token_counts
+            .entry(session_id.to_string())
+            .and_modify(|current| *current = (*current).max(token_end))
+            .or_insert(token_end);
+        Ok(())
+    }
+
     pub fn save_resident_prefix(
         &mut self,
         session_id: &str,
@@ -418,6 +505,15 @@ impl RuntimeState {
             resident_prefix: None,
         })
     }
+}
+
+fn system_one_endpoint_is_runnable(
+    has_canvas: bool,
+    has_input_boundary: bool,
+    has_output_boundary: bool,
+    lane_count: u32,
+) -> bool {
+    has_canvas && !has_input_boundary && !has_output_boundary && lane_count == 1
 }
 
 /// Clamps a requested idle-pool prewarm target to `model_fit.cache_idle_slots`

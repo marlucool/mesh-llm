@@ -53,10 +53,6 @@ fn merge_model_fit(effective: &mut ModelConfigEntry, defaults: &ModelConfigDefau
         .clone()
         .or_else(|| default_fit.cache_type_v.clone());
     fit.flash_attention = fit.flash_attention.or(default_fit.flash_attention);
-    fit.kv_cache_policy = fit
-        .kv_cache_policy
-        .clone()
-        .or_else(|| default_fit.kv_cache_policy.clone());
     fit.kv_offload = fit.kv_offload.clone().or(default_fit.kv_offload.clone());
     fit.kv_unified = fit.kv_unified.clone().or(default_fit.kv_unified.clone());
     fit.cache_ram_mib = fit.cache_ram_mib.or(default_fit.cache_ram_mib);
@@ -200,6 +196,9 @@ fn merge_throughput(effective: &mut ModelConfigEntry, defaults: &ModelConfigDefa
         .continuous_batching
         .clone()
         .or_else(|| default_throughput.continuous_batching.clone());
+    throughput.pipeline_decode_groups = throughput
+        .pipeline_decode_groups
+        .or(default_throughput.pipeline_decode_groups);
     throughput.threads = throughput.threads.or(default_throughput.threads);
     throughput.threads_batch = throughput
         .threads_batch

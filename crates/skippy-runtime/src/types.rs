@@ -9,6 +9,21 @@ use skippy_ffi::{
 };
 
 pub const MAX_LOGIT_BIAS: usize = 256;
+/// Token window for the repetition and DRY penalty samplers when none is set,
+/// matching llama.cpp's default for history-based samplers.
+pub const DEFAULT_PENALTY_LAST_N: i32 = 64;
+
+/// Resolves a penalty window for llama.cpp. -1 once meant "the whole context",
+/// but llama.cpp dropped that and disables a sampler given a negative window,
+/// so the legacy value falls back to the default window instead.
+pub fn penalty_window(last_n: i32) -> i32 {
+    if last_n == -1 {
+        DEFAULT_PENALTY_LAST_N
+    } else {
+        last_n
+    }
+}
+
 pub const ACTIVATION_BOUNDARY_DESC_VERSION: u32 = skippy_ffi::ACTIVATION_BOUNDARY_DESC_VERSION;
 
 /// Runtime memory semantics reported by the loaded llama.cpp model.
@@ -622,6 +637,46 @@ pub struct SamplingConfig {
     pub mirostat_entropy: f32,
     pub mirostat_learning_rate: f32,
     pub samplers: Vec<String>,
+    pub reasoning_budget: ReasoningBudget,
+}
+
+/// Reasoning-token limit resolved after the prompt establishes the effective
+/// output allowance. Explicit token counts are only bounded by the overall
+/// generation/context limit; semantic and fallback levels reserve half of the
+/// output allowance for the visible answer.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReasoningBudget {
+    #[default]
+    Unrestricted,
+    Explicit(u32),
+    Capped(u32),
+    Resolved(i32),
+}
+
+impl ReasoningBudget {
+    pub fn resolve_for_output(&mut self, max_output_tokens: usize) {
+        let resolved = match *self {
+            Self::Unrestricted => -1,
+            Self::Explicit(tokens) => i32::try_from(tokens).unwrap_or(i32::MAX),
+            Self::Capped(tokens) => {
+                let reserved = max_output_tokens / 2;
+                i32::try_from((tokens as usize).min(reserved)).unwrap_or(i32::MAX)
+            }
+            Self::Resolved(tokens) => tokens,
+        };
+        *self = Self::Resolved(resolved);
+    }
+
+    fn native_tokens(self) -> Result<i32> {
+        match self {
+            Self::Unrestricted => Ok(-1),
+            Self::Explicit(tokens) => Ok(i32::try_from(tokens).unwrap_or(i32::MAX)),
+            Self::Resolved(tokens) => Ok(tokens),
+            Self::Capped(_) => Err(anyhow!(
+                "reasoning budget must be resolved against the output limit before sampling"
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -652,7 +707,7 @@ impl Default for SamplingConfig {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
             repeat_penalty: 1.0,
-            penalty_last_n: -1,
+            penalty_last_n: DEFAULT_PENALTY_LAST_N,
             logit_bias: Vec::new(),
             typical_p: 1.0,
             top_nsigma: -1.0,
@@ -662,7 +717,7 @@ impl Default for SamplingConfig {
                 multiplier: 0.0,
                 base: 1.75,
                 allowed_length: 2,
-                penalty_last_n: 64,
+                penalty_last_n: DEFAULT_PENALTY_LAST_N,
                 sequence_breakers: vec!["\n".into(), ":".into(), "\"".into(), "*".into()],
             },
             xtc: XtcSamplingConfig {
@@ -683,12 +738,23 @@ impl Default for SamplingConfig {
                 "xtc".into(),
                 "temperature".into(),
             ],
+            reasoning_budget: ReasoningBudget::Unrestricted,
         }
     }
 }
 
 impl SamplingConfig {
+    pub fn resolve_reasoning_budget(&mut self, max_output_tokens: u32) {
+        self.reasoning_budget
+            .resolve_for_output(max_output_tokens as usize);
+    }
+
     pub(crate) fn as_raw(&self) -> Result<RawSamplingConfig> {
+        if self.penalty_last_n < -1 || self.dry.penalty_last_n < -1 {
+            return Err(anyhow!(
+                "sampling penalty windows must be greater than or equal to -1"
+            ));
+        }
         if self.logit_bias.len() > MAX_LOGIT_BIAS {
             return Err(anyhow!("sampling logit_bias exceeds the native limit"));
         }
@@ -736,11 +802,11 @@ impl SamplingConfig {
             target[..length].copy_from_slice(&bytes[..length]);
         }
         Ok(RawSamplingConfig {
-            version: 2,
+            version: 3,
             flags: u32::from(self.enabled) | (u32::from(self.ignore_eos) << 1),
             seed: self.seed,
             top_k: self.top_k,
-            penalty_last_n: self.penalty_last_n,
+            penalty_last_n: penalty_window(self.penalty_last_n),
             temperature: self.temperature,
             top_p: self.top_p,
             presence_penalty: self.presence_penalty,
@@ -755,7 +821,7 @@ impl SamplingConfig {
             dry_multiplier: self.dry.multiplier,
             dry_base: self.dry.base,
             dry_allowed_length: self.dry.allowed_length,
-            dry_penalty_last_n: self.dry.penalty_last_n,
+            dry_penalty_last_n: penalty_window(self.dry.penalty_last_n),
             xtc_probability: self.xtc.probability,
             xtc_threshold: self.xtc.threshold,
             mirostat_mode: self.mirostat_mode,
@@ -767,6 +833,7 @@ impl SamplingConfig {
             dry_sequence_breaker_count: self.dry.sequence_breakers.len() as u32,
             dry_sequence_breakers,
             logit_bias,
+            reasoning_budget_tokens: self.reasoning_budget.native_tokens()?,
         })
     }
 }
@@ -1143,6 +1210,42 @@ mod kv_page_descriptor_tests {
     }
 
     #[test]
+    fn sampling_raw_resolves_penalty_windows_for_llama_cpp() {
+        for (window, expected) in [(-1, DEFAULT_PENALTY_LAST_N), (0, 0), (128, 128)] {
+            let raw = SamplingConfig {
+                penalty_last_n: window,
+                dry: DrySamplingConfig {
+                    penalty_last_n: window,
+                    ..SamplingConfig::default().dry
+                },
+                ..SamplingConfig::default()
+            }
+            .as_raw()
+            .unwrap();
+            assert_eq!(raw.penalty_last_n, expected, "window={window}");
+            assert_eq!(raw.dry_penalty_last_n, expected, "window={window}");
+        }
+    }
+
+    #[test]
+    fn sampling_raw_rejects_penalty_windows_below_legacy_alias() {
+        let penalties = SamplingConfig {
+            penalty_last_n: -2,
+            ..SamplingConfig::default()
+        };
+        let dry = SamplingConfig {
+            dry: DrySamplingConfig {
+                penalty_last_n: -2,
+                ..SamplingConfig::default().dry
+            },
+            ..SamplingConfig::default()
+        };
+
+        assert!(penalties.as_raw().is_err());
+        assert!(dry.as_raw().is_err());
+    }
+
+    #[test]
     fn sampling_raw_rejects_unknown_sampler_names() {
         let sampling = SamplingConfig {
             samplers: vec!["unknown".to_string()],
@@ -1150,5 +1253,45 @@ mod kv_page_descriptor_tests {
         };
 
         assert!(sampling.as_raw().is_err());
+    }
+
+    #[test]
+    fn reasoning_budget_resolution_distinguishes_explicit_levels_and_unrestricted() {
+        let mut explicit = ReasoningBudget::Explicit(8_192);
+        explicit.resolve_for_output(4_096);
+        assert_eq!(explicit, ReasoningBudget::Resolved(8_192));
+
+        let mut semantic = ReasoningBudget::Capped(8_192);
+        semantic.resolve_for_output(4_096);
+        assert_eq!(semantic, ReasoningBudget::Resolved(2_048));
+
+        let mut small_fallback = ReasoningBudget::Capped(4_096);
+        small_fallback.resolve_for_output(31);
+        assert_eq!(small_fallback, ReasoningBudget::Resolved(15));
+
+        let mut disabled = ReasoningBudget::Explicit(0);
+        disabled.resolve_for_output(8_192);
+        assert_eq!(disabled, ReasoningBudget::Resolved(0));
+
+        let mut unrestricted = ReasoningBudget::Unrestricted;
+        unrestricted.resolve_for_output(8_192);
+        assert_eq!(unrestricted, ReasoningBudget::Resolved(-1));
+    }
+
+    #[test]
+    fn resolved_reasoning_budget_reaches_native_sampling_abi() {
+        for (budget, expected) in [
+            (ReasoningBudget::Resolved(-1), -1),
+            (ReasoningBudget::Resolved(0), 0),
+            (ReasoningBudget::Resolved(1_024), 1_024),
+        ] {
+            let raw = SamplingConfig {
+                reasoning_budget: budget,
+                ..SamplingConfig::default()
+            }
+            .as_raw()
+            .unwrap();
+            assert_eq!(raw.reasoning_budget_tokens, expected);
+        }
     }
 }

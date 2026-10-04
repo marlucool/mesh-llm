@@ -1,9 +1,11 @@
+pub mod anthropic;
 pub mod audio;
 pub mod backend;
 mod backend_lifecycle;
 pub mod chat;
 pub mod common;
 pub mod completions;
+mod decisions;
 pub mod embeddings;
 pub mod errors;
 mod guardrails;
@@ -86,6 +88,6 @@ pub use router::{
     OpenAiFrontendConfig, router, router_for, router_for_with_config, router_with_config,
 };
 pub use system_one::{
-    SystemOneAnswer, SystemOneNoulCriteria, SystemOneQuestion, SystemOneRequest, SystemOneResponse,
-    SystemOneUsage,
+    SystemOneAnswer, SystemOneJson, SystemOneJsonObject, SystemOneNoulCriteria, SystemOneQuestion,
+    SystemOneRequest, SystemOneResponse, SystemOneUsage,
 };

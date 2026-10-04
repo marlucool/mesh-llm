@@ -231,6 +231,8 @@ fn recurrent_test_backend(
             payload: StageKvCachePayload::KvRecurrent,
             max_entries: 8,
             max_bytes: 0,
+            l2_max_bytes: 0,
+            codec: skippy_protocol::StageKvCacheCodec::Native,
             min_tokens: 1,
             shared_prefix_stride_tokens: 1,
             shared_prefix_record_limit: 0,
@@ -250,7 +252,7 @@ fn recurrent_test_backend(
     let telemetry = Telemetry::new(None, 1, config.clone(), TelemetryLevel::Off);
     let speculative = SpeculativeDecodeConfig::default();
     let iteration_scheduler =
-        IterationScheduler::new(runtime.clone(), &config, 1, true, telemetry.clone())?;
+        IterationScheduler::new(runtime.clone(), &config, 1, true, None, telemetry.clone())?;
     let backend = StageOpenAiBackend {
         runtime: runtime.clone(),
         workload: Default::default(),
@@ -303,7 +305,8 @@ fn local_generation_signal_window_uses_configured_value() {
     let runtime = Arc::new(Mutex::new(RuntimeState::new_modelless_for_test(1)));
     let telemetry = Telemetry::new(None, 1, config.clone(), TelemetryLevel::Off);
     let iteration_scheduler =
-        IterationScheduler::new(runtime.clone(), &config, 1, true, telemetry.clone()).unwrap();
+        IterationScheduler::new(runtime.clone(), &config, 1, true, None, telemetry.clone())
+            .unwrap();
     let backend = StageOpenAiBackend {
         runtime,
         workload: Default::default(),
@@ -784,7 +787,7 @@ fn local_generation_eventually_delivers_receipts_and_cleanup_survives_sink_error
     let telemetry = Telemetry::new(None, 1, config.clone(), TelemetryLevel::Off);
     let speculative = SpeculativeDecodeConfig::default();
     let iteration_scheduler =
-        IterationScheduler::new(runtime.clone(), &config, 1, true, telemetry.clone())?;
+        IterationScheduler::new(runtime.clone(), &config, 1, true, None, telemetry.clone())?;
     let backend = StageOpenAiBackend {
         runtime: runtime.clone(),
         workload: Default::default(),

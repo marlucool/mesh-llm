@@ -76,7 +76,6 @@ fn write_effective_fit_profile(buffer: &mut Vec<u8>, entry: &ModelConfigEntry) {
 }
 
 fn write_fit_cache_profile(buffer: &mut Vec<u8>, fit: &ModelFitConfig) {
-    write_option!(buffer, "kv_cache_policy", fit.kv_cache_policy);
     write_option!(buffer, "kv_offload", fit.kv_offload);
     write_option!(buffer, "kv_unified", fit.kv_unified);
     write_option!(buffer, "cache_ram_mib", fit.cache_ram_mib);
@@ -193,6 +192,11 @@ fn write_throughput_fields(buffer: &mut Vec<u8>, throughput: &ThroughputConfig) 
         buffer,
         "continuous_batching",
         throughput.continuous_batching
+    );
+    write_option!(
+        buffer,
+        "pipeline_decode_groups",
+        throughput.pipeline_decode_groups
     );
     write_option!(buffer, "threads", throughput.threads);
     write_option!(buffer, "threads_batch", throughput.threads_batch);

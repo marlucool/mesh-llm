@@ -33,6 +33,11 @@ Own the repair end to end:
 5. Run prepare, the complete patched llama.cpp build with upstream tests, the
    generated-family check, affected Rust package checks, and focused smoke or
    real-model reproductions for your repairs. Inspect failures and fix them.
+   Keep build and test commands in the foreground. If you start any background
+   command, record its PID, wait for it to exit, and check its exit status before
+   returning. Do not leave `nohup`, detached, or still-running build and test
+   processes behind: the harness must stop remaining process-group members
+   before it can safely verify your working tree.
    Once those checks pass, return control to the trusted harness. Do not run
    an additional full family battery inside the coding session: the wrapper
    runs every canonical gate, including the complete roster, after you return.
@@ -76,11 +81,16 @@ pass, the job exports an uncertified immutable candidate and releases its
 runner. Separate jobs certify every family using the exact producer binaries.
 
 A failed family pass or independent verification supplies its candidate and
-all available failure logs to a new session in the next attempt. Read those
-logs before continuing. There are at most three distributed repair attempts;
-every edit requires a new complete build and family pass. Both the first full
-family pass and the fresh independent build/family pass must be green on the
-same commit before the hosted publisher can create a branch or PR.
+confirmed candidate failure logs to a new session in the next attempt. Read
+those logs before continuing. Runner/workflow failures and missing receipts
+are first rechecked only for the affected families on the same immutable
+candidate without invoking this agent; valid candidate failures from a mixed
+pass are retained. Repeated infrastructure failure, corrupt/foreign evidence,
+and other contract failures stop without starting another session. There are
+at most three distributed repair attempts; every edit requires a new complete
+build and family pass. Both the first full family pass and the fresh independent
+build/family pass must be green on the same commit before the hosted publisher
+can create a branch or PR.
 
 ## New upstream model families
 
