@@ -8,6 +8,10 @@ The easiest way to try Mesh is to create your own private mesh. Start one node o
 
 ## 1. Install the executable
 
+> **Fork note:** the installer URLs on this page download upstream
+> `Mesh-LLM/mesh-llm` builds. This fork does not publish releases yet, so
+> build from source (`just build`) for a fork build.
+
 Choose your platform for the fastest path:
 
 **macOS**:

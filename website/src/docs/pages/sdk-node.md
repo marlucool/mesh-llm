@@ -6,6 +6,13 @@ title: Node.js and Electron SDK
 
 Use [`@mesh-llm/sdk`](https://www.npmjs.com/package/@mesh-llm/sdk) in Node.js services, desktop apps, and Electron applications. The package uses a native N-API addon and the same embedded serving path as the Swift and Kotlin SDKs.
 
+> **Fork note:** the `@mesh-llm/sdk` npm package is owned and published by
+> upstream [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm), not by
+> this fork. `npm install @mesh-llm/sdk` gives you upstream code (without
+> fork-only changes such as the Tailscale integration), which may lag this
+> repository's local `sdk/node` sources. Build the addon from this checkout
+> for a fork build.
+
 ## Install
 
 ```bash

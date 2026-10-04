@@ -7,6 +7,11 @@ For command-by-command CLI usage, model resolution rules, and JSON automation ex
 
 ## Installation details
 
+> **Fork note:** these commands fetch installers from upstream
+> `Mesh-LLM/mesh-llm`, so they install upstream builds. This fork
+> (`marlucool/mesh-llm`) does not publish releases yet, so its installer has
+> nothing to download — build from source (`just build`) for a fork build.
+
 Install the latest release executable:
 
 ```bash

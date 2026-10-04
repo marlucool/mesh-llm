@@ -158,6 +158,16 @@ prerelease.
 If Mesh is absent, offer the official installer. The Unix installer supports
 Apple Silicon macOS, Linux x86_64, and Linux aarch64:
 
+> **Fork note:** this runbook's `meshllm.cloud` installer URLs (and the
+> Homebrew tap below) download builds from upstream
+> [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm) releases. This
+> fork (`marlucool/mesh-llm`) does not publish releases yet, so there is no
+> installer that ships fork builds (including the Tailscale integration) —
+> build from source (`just build`) for a fork build. Likewise, do not run
+> `mesh-llm update` on a fork-built binary: the self-updater's default release
+> repository is still upstream, so it would silently replace the fork binary
+> with an upstream build.
+
 ```sh
 curl -fsSL https://meshllm.cloud/install.sh | bash
 ```
@@ -177,6 +187,8 @@ On Apple Silicon macOS, the canonical Homebrew tap is also available:
 ```sh
 brew install Mesh-LLM/tap/mesh-llm
 ```
+
+The Homebrew formula downloads upstream release archives, not fork builds.
 
 Intel macOS is not currently available through Homebrew.
 

@@ -2,6 +2,13 @@
 
 Use `@mesh-llm/sdk` from npm for Node.js and Electron applications.
 
+> **Fork note:** the `@mesh-llm/sdk` npm package is owned and published by
+> upstream [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm), not by
+> this fork. `npm install @mesh-llm/sdk` gives you upstream code (without
+> fork-only changes such as the Tailscale integration), which may lag this
+> repository's local `sdk/node` sources. Build the addon from this checkout
+> (below) for a fork build.
+
 ## Install
 
 ```bash

@@ -2,6 +2,13 @@
 
 Use the GitHub Swift package from tagged `Mesh-LLM/mesh-llm` releases.
 
+> **Fork note:** the SwiftPM URL below resolves to upstream
+> [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm), not this fork —
+> this fork does not publish releases or Swift packages. Adding the package
+> gives you upstream code (without fork-only changes such as the Tailscale
+> integration). Build the XCFramework from this checkout (below) for a fork
+> build.
+
 ## Install
 
 ```swift
