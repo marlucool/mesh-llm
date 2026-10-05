@@ -9,12 +9,27 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::process::Command;
+use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
 const DEFAULT_MESH_API_PORT: u16 = 9337;
 const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const TAILSCALE_PROBE_CONCURRENCY: usize = 16;
 const REQUIRED_MESHLLM_TAILSCALE_TAG: &str = "tag:mesh-llm";
+/// How long a successful `tailscale status --json` snapshot may be reused
+/// before a fresh one is spawned. Discovery, doctor, and per-request peer
+/// authorization all shell out otherwise; a short TTL keeps authorization
+/// decisions responsive to ACL/tag changes without paying a subprocess per
+/// request.
+const STATUS_CACHE_TTL: Duration = Duration::from_secs(5);
+
+struct CachedTailscaleStatus {
+    status: TailscaleStatus,
+    fetched_at: Instant,
+}
+
+/// Process-wide cache of the last `tailscale status --json` snapshot.
+static STATUS_CACHE: StdMutex<Option<CachedTailscaleStatus>> = StdMutex::new(None);
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct TailscaleMeshPeer {
@@ -55,7 +70,7 @@ pub struct TailscaleDoctorReport {
     pub peers: Vec<TailscaleDoctorPeer>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct TailscaleStatus {
     #[serde(rename = "Self")]
     self_peer: TailscalePeer,
@@ -63,7 +78,7 @@ struct TailscaleStatus {
     peers: HashMap<String, TailscalePeer>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct TailscalePeer {
     #[serde(rename = "HostName", default)]
     hostname: String,
@@ -201,7 +216,11 @@ pub async fn doctor(timeout: Duration) -> TailscaleDoctorReport {
 
     let total_peer_count = status.peers.len();
     let online_peer_count = status.peers.values().filter(|peer| peer.online).count();
-    let tagged_peer_count = status.peers.values().filter(|peer| has_meshllm_tag(peer)).count();
+    let tagged_peer_count = status
+        .peers
+        .values()
+        .filter(|peer| has_meshllm_tag(peer))
+        .count();
     let online_tagged_peer_count = status
         .peers
         .values()
@@ -222,7 +241,12 @@ pub async fn doctor(timeout: Duration) -> TailscaleDoctorReport {
                     .peers
                     .into_values()
                     .filter(|peer| has_meshllm_tag(peer))
-                    .filter(|peer| !peer.addresses.iter().any(|addr| self_addresses.contains(addr))),
+                    .filter(|peer| {
+                        !peer
+                            .addresses
+                            .iter()
+                            .any(|addr| self_addresses.contains(addr))
+                    }),
             )
             .map(|peer| {
                 let client = client.clone();
@@ -305,11 +329,7 @@ async fn probe_peer(peer: TailscalePeer, client: Client) -> PeerProbe {
     for ip in addresses {
         let api_base_url = api_base_url(ip);
         let started = Instant::now();
-        let response = match client
-            .get(format!("{api_base_url}/v1/models"))
-            .send()
-            .await
-        {
+        let response = match client.get(format!("{api_base_url}/v1/models")).send().await {
             Ok(response) if response.status().is_success() => response,
             _ => continue,
         };
@@ -399,7 +419,7 @@ fn compare_doctor_peer(a: &TailscaleDoctorPeer, b: &TailscaleDoctorPeer) -> Orde
             .then_with(|| a.hostname.cmp(&b.hostname)),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        (None, None) => a.hostname.cmp(&b_hostname),
+        (None, None) => a.hostname.cmp(&b.hostname),
     }
 }
 
@@ -421,10 +441,55 @@ fn matches_target_name(peer: &TailscalePeer, target_name: Option<&str>) -> bool 
 }
 
 fn has_meshllm_tag(peer: &TailscalePeer) -> bool {
-    peer.tags.iter().any(|tag| tag == REQUIRED_MESHLLM_TAILSCALE_TAG)
+    peer.tags
+        .iter()
+        .any(|tag| tag == REQUIRED_MESHLLM_TAILSCALE_TAG)
 }
 
 fn read_status() -> Result<TailscaleStatus> {
+    read_status_cached()
+}
+
+/// Read `tailscale status --json` with a short process-wide cache.
+///
+/// Within [`STATUS_CACHE_TTL`] the last successful snapshot is served as-is.
+/// After that a refresh is required. If `tailscale status` fails, propagate
+/// the error rather than using a stale peer/tag list for authorization. This
+/// keeps the join endpoint fail-closed when Tailscale is unavailable.
+fn read_status_cached() -> Result<TailscaleStatus> {
+    {
+        let cache = STATUS_CACHE
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
+        if let Some(cached) = cache.as_ref() {
+            if cached.fetched_at.elapsed() <= STATUS_CACHE_TTL {
+                return Ok(cached.status.clone());
+            }
+        }
+    }
+
+    let fresh = run_tailscale_status();
+
+    match fresh {
+        Ok(status) => {
+            let cache = STATUS_CACHE
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
+            *cache = Some(CachedTailscaleStatus {
+                status: status.clone(),
+                fetched_at: Instant::now(),
+            });
+            Ok(status)
+        }
+        // Do not serve a stale peer/tag snapshot when authorization callers
+        // cannot refresh it. After the short TTL, a Tailscale failure must
+        // fail closed rather than retain access for a peer whose tag/ACL was
+        // revoked while the daemon is unavailable.
+        Err(error) => Err(error),
+    }
+}
+
+fn run_tailscale_status() -> Result<TailscaleStatus> {
     let output = Command::new("tailscale")
         .args(["status", "--json"])
         .output()
