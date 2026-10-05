@@ -22,11 +22,6 @@ const REQUIRED_MESHLLM_TAILSCALE_TAG: &str = "tag:mesh-llm";
 /// decisions responsive to ACL/tag changes without paying a subprocess per
 /// request.
 const STATUS_CACHE_TTL: Duration = Duration::from_secs(5);
-/// Extra time a snapshot may serve after a refresh *fails* — bounded
-/// staleness is safer for authorization than failing closed on a single
-/// transient `tailscale` hiccup, and is still short enough that a revoked
-/// peer loses access promptly.
-const STATUS_CACHE_STALE_MAX: Duration = Duration::from_secs(60);
 
 struct CachedTailscaleStatus {
     status: TailscaleStatus,
@@ -451,11 +446,9 @@ fn read_status() -> Result<TailscaleStatus> {
 /// Read `tailscale status --json` with a short process-wide cache.
 ///
 /// Within [`STATUS_CACHE_TTL`] the last successful snapshot is served as-is.
-/// After that a refresh is attempted; if the refresh fails and the cached
-/// snapshot is no older than [`STATUS_CACHE_STALE_MAX`], the stale snapshot
-/// is served (bounded staleness over a hard failure for availability).
-/// Beyond the stale window the refresh error is propagated, which makes the
-/// join-endpoint authorization fail closed (503) as before.
+/// After that a refresh is required. If `tailscale status` fails, propagate
+/// the error rather than using a stale peer/tag list for authorization. This
+/// keeps the join endpoint fail-closed when Tailscale is unavailable.
 fn read_status_cached() -> Result<TailscaleStatus> {
     {
         let cache = STATUS_CACHE
@@ -481,28 +474,11 @@ fn read_status_cached() -> Result<TailscaleStatus> {
             });
             Ok(status)
         }
-        Err(error) => {
-            let serve_stale = {
-                let cache = STATUS_CACHE
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
-                cache.as_ref().is_some_and(|cached| {
-                    cached.fetched_at.elapsed() <= STATUS_CACHE_TTL + STATUS_CACHE_STALE_MAX
-                })
-            };
-            if serve_stale {
-                // Serve the stale snapshot instead of failing on a transient
-                // `tailscale` hiccup; the next caller past the TTL will
-                // attempt a fresh refresh again.
-                let cache = STATUS_CACHE
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
-                if let Some(cached) = cache.as_ref() {
-                    return Ok(cached.status.clone());
-                }
-            }
-            Err(error)
-        }
+        // Do not serve a stale peer/tag snapshot when authorization callers
+        // cannot refresh it. After the short TTL, a Tailscale failure must
+        // fail closed rather than retain access for a peer whose tag/ACL was
+        // revoked while the daemon is unavailable.
+        Err(error) => Err(error)
     }
 }
 
