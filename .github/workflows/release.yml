@@ -153,6 +153,17 @@ jobs:
         with:
           node-version: 24.20.0
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable 2026-08-20
+      - name: Verify runner image pullability for this repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fail fast and with a clear message when the pinned runner images
+          # cannot be pulled by THIS repository's CI (for example a fork whose
+          # GITHUB_TOKEN has no access to another organization's private GHCR
+          # packages), instead of letting every container job die at
+          # "Initialize containers" after minutes of queue time.
+          bash scripts/check-runner-image-pullability.sh
+
       - name: Prepare canonical release source
         id: source
         shell: bash
@@ -224,16 +235,6 @@ jobs:
           depot_main_enabled: ${{ vars.DEPOT_RUNNERS_ENABLED == 'true' }}
           depot_pr_enabled: 'false'
           manual_use_depot: ${{ inputs.use_depot == true }}
-      - name: Verify runner image pullability for this repository
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Fail fast and with a clear message when the pinned runner images
-          # cannot be pulled by THIS repository's CI (for example a fork whose
-          # GITHUB_TOKEN has no access to another organization's private GHCR
-          # packages), instead of letting every container job die at
-          # "Initialize containers" after minutes of queue time.
-          bash scripts/check-runner-image-pullability.sh
 
   release_ui:
     name: Prepare shared release console
