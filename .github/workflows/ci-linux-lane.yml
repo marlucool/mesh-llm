@@ -55,9 +55,29 @@ concurrency:
   cancel-in-progress: ${{ inputs.original_event_name == 'pull_request' }}
 
 jobs:
+  validate_manual_source:
+    name: Validate manually dispatched source
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Reject non-main or mismatched source revision
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          EVENT_SHA: ${{ github.sha }}
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_REF" != "refs/heads/main" || "$SOURCE_SHA" != "$EVENT_SHA" ]]; then
+            echo "Manual lane runs must use the current main revision (source_sha == github.sha)." >&2
+            exit 1
+          fi
+
   ui_artifact:
     name: Console artifact
-    if: ${{ fromJson(inputs.lane_plan_json).required && fromJson(inputs.lane_plan_json).matrices.hosts[0] != null }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (fromJson(inputs.lane_plan_json).required && fromJson(inputs.lane_plan_json).matrices.hosts[0] != null) }}
     uses: ./.github/workflows/ci-ui-artifact-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -68,7 +88,7 @@ jobs:
 
   static_abi:
     name: Static ABI
-    if: ${{ contains(fromJson(inputs.lane_plan_json).required_slices, 'static-abi') }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (contains(fromJson(inputs.lane_plan_json).required_slices, 'static-abi')) }}
     uses: ./.github/workflows/static-abi-artifact.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -84,7 +104,7 @@ jobs:
   rust_tests:
     name: Rust tests
     needs: [static_abi]
-    if: ${{ !cancelled() && needs.static_abi.result == 'success' && fromJson(inputs.lane_plan_json).matrices.rust_tests[0] != null }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.static_abi.result == 'success' && fromJson(inputs.lane_plan_json).matrices.rust_tests[0] != null) }}
     uses: ./.github/workflows/ci-rust-tests-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -99,7 +119,7 @@ jobs:
   hosts:
     name: Neutral Linux host
     needs: [ui_artifact]
-    if: ${{ !cancelled() && needs.ui_artifact.result == 'success' && fromJson(inputs.lane_plan_json).matrices.hosts[0] != null }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.ui_artifact.result == 'success' && fromJson(inputs.lane_plan_json).matrices.hosts[0] != null) }}
     uses: ./.github/workflows/ci-linux-host-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -114,7 +134,7 @@ jobs:
 
   native_runtimes:
     name: Native Linux runtimes
-    if: ${{ fromJson(inputs.lane_plan_json).matrices.runtime_products[0] != null }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (fromJson(inputs.lane_plan_json).matrices.runtime_products[0] != null) }}
     uses: ./.github/workflows/ci-linux-runtime-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -128,7 +148,7 @@ jobs:
   runtime_product:
     name: Linux products
     needs: [hosts, native_runtimes]
-    if: ${{ !cancelled() && needs.hosts.result == 'success' && needs.native_runtimes.result == 'success' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.hosts.result == 'success' && needs.native_runtimes.result == 'success') }}
     uses: ./.github/workflows/ci-linux-product-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -141,7 +161,7 @@ jobs:
   kotlin_sdk_input:
     name: Kotlin SDK input
     needs: [static_abi]
-    if: ${{ !cancelled() && needs.static_abi.result == 'success' && contains(fromJson(inputs.lane_plan_json).matrices.sdk.*.id, 'kotlin') }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.static_abi.result == 'success' && contains(fromJson(inputs.lane_plan_json).matrices.sdk.*.id, 'kotlin')) }}
     uses: ./.github/workflows/native-sdk-artifact.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -159,7 +179,7 @@ jobs:
   sdk:
     name: Linux SDK smoke
     needs: [runtime_product, kotlin_sdk_input]
-    if: ${{ !cancelled() && needs.runtime_product.result == 'success' && (!contains(fromJson(inputs.lane_plan_json).matrices.sdk.*.id, 'kotlin') || needs.kotlin_sdk_input.result == 'success') && fromJson(inputs.lane_plan_json).matrices.sdk[0] != null }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.runtime_product.result == 'success' && (!contains(fromJson(inputs.lane_plan_json).matrices.sdk.*.id, 'kotlin') || needs.kotlin_sdk_input.result == 'success') && fromJson(inputs.lane_plan_json).matrices.sdk[0] != null) }}
     uses: ./.github/workflows/ci-linux-sdk-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -173,7 +193,7 @@ jobs:
   product_smoke:
     name: Linux product smoke
     needs: [runtime_product]
-    if: ${{ !cancelled() && needs.runtime_product.result == 'success' && fromJson(inputs.lane_plan_json).matrices.smoke[0] != null }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.runtime_product.result == 'success' && fromJson(inputs.lane_plan_json).matrices.smoke[0] != null) }}
     uses: ./.github/workflows/ci-linux-product-smoke-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -197,7 +217,7 @@ jobs:
       - kotlin_sdk_input
       - sdk
       - product_smoke
-    if: ${{ !cancelled() }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled()) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
