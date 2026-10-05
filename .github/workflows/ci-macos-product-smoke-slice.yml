@@ -59,7 +59,7 @@ jobs:
 
   laya_metal:
     name: Laya smoke (macOS Metal)
-    if: ${{ contains(fromJson(inputs.runtime_matrix).*.id, 'macos-metal') && contains(fromJson(inputs.smoke_matrix).*.id, 'metal-model-load') }}
+    if: ${{ contains(fromJson(inputs.runtime_matrix).*.id, 'macos-metal') && contains(fromJson(inputs.smoke_matrix).*.id, 'metal-model-load') && (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) }}
     runs-on: macos-15
     timeout-minutes: ${{ inputs.timeout_minutes }}
     env:
