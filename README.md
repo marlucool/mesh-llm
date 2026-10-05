@@ -11,7 +11,14 @@ peer, or uses Skippy stage splits for models that are too large for one box.
 
 ## Quick start
 
-Install the latest release executable:
+> [!NOTE]
+> **This fork does not publish releases yet.** The `install.sh`/`install.ps1`
+> scripts below download release archives from
+> `github.com/marlucool/mesh-llm/releases`, and those 404 until the first fork
+> release is published. Until then, build from source (see
+> [Install and build notes](#install-and-build-notes)).
+
+The installer scripts (for use once fork releases exist):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/marlucool/mesh-llm/main/install.sh | bash
@@ -23,12 +30,15 @@ On Windows, use PowerShell:
 irm https://raw.githubusercontent.com/marlucool/mesh-llm/main/install.ps1 | iex
 ```
 
-Install the Apple Silicon Homebrew formula with
-`brew install Mesh-LLM/tap/mesh-llm`. Versioned formulas, Ubuntu and Arch
-packages, checksums, SBOMs, and OCI images are produced by the public
+Apple Silicon Homebrew: `brew install Mesh-LLM/tap/mesh-llm` — **note that
+this tap's formula downloads builds from upstream
+[`Mesh-LLM/mesh-llm`](https://github.com/Mesh-LLM/mesh-llm) releases, not fork
+builds.** Versioned formulas, Ubuntu and Arch packages, checksums, SBOMs, and
+OCI images are produced by the public
 [`Mesh-LLM/mesh-packaging`](https://github.com/Mesh-LLM/mesh-packaging)
 repository. See the [platform install guides](https://meshllm.cloud/docs/pages/installing-mesh/)
-for the supported package matrix and install commands.
+for the supported package matrix and install commands; those guides and the
+`meshllm.cloud` installer URLs also serve upstream builds, not fork builds.
 
 Finish setup:
 
@@ -132,6 +142,23 @@ This fork periodically syncs `main` with
 in the fork; the sync job never force-pushes `main`. See
 [the fork sync guide](docs/networking/upstream-sync.md) for the conflict
 behavior and manual procedure.
+
+Additional fork realities to be aware of:
+
+- **No fork releases yet.** This fork does not publish GitHub releases, so
+  installer URLs targeting `marlucool/mesh-llm` releases do not work; build
+  from source (`just build`, see
+  [Install and build notes](#install-and-build-notes)) until fork releases
+  exist.
+- **Do not run `mesh-llm update` on a fork build yet.** The self-updater's
+  default release repository is still upstream `Mesh-LLM/mesh-llm`
+  (`crates/mesh-llm-system/src/autoupdate/release_fetch.rs`), so updating a
+  fork-built binary would silently replace it with the upstream build — losing
+  fork-only changes such as the Tailscale integration. The
+  `MESH_LLM_SELF_UPDATE_REPO` environment variable can override the release
+  repository, but there is no fork release to update to yet. The default will be
+  flipped to the fork in a follow-up change sequenced after the first fork
+  release is published.
 
 
 
@@ -296,9 +323,10 @@ binary to `invalid`, but default startup still allows it.
 
 Native Windows CUDA works, including on CUDA 13.x drivers: GPU detection (`mesh-llm gpus`) and full-speed CUDA inference have been verified on driver 610.74 (CUDA UMD 13.3) with an RTX 4070 Ti. T[...]
 
-As of v0.76.0-rc8, three distribution/loading bugs still block the out-of-the-box native path. Until the fixes ship, this sequence works end to end:
+As of v0.76.0-rc8, three distribution/loading bugs still block the out-of-the-box native path. Until the fixes ship, this sequence works end to end **on an upstream build** — the steps below download from upstream
+[`Mesh-LLM/mesh-llm`](https://github.com/Mesh-LLM/mesh-llm) releases, because this fork does not publish releases yet. For a fork build with the Tailscale integration, build from source (`just build`) instead:
 
-1. **Install the prerelease** — the stable v0.75.1 Windows bundles fail `install.ps1` verification ([#1510](https://github.com/Mesh-LLM/mesh-llm/issues/1510)):
+1. **Install the upstream prerelease** — the stable v0.75.1 Windows bundles fail `install.ps1` verification ([#1510](https://github.com/Mesh-LLM/mesh-llm/issues/1510)):
 
    ```powershell
    irm https://raw.githubusercontent.com/Mesh-LLM/mesh-llm/main/install.ps1 -OutFile install.ps1

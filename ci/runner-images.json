@@ -2,10 +2,10 @@
   "schema_version": 1,
   "images": {
     "public-cpu": {
-      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d",
+      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631",
       "environment": "public",
       "backend": "cpu",
-      "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d",
+      "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631",
       "receipt": null,
       "provenance": null
     },

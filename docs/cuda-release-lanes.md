@@ -90,6 +90,11 @@ curl -fsSL https://raw.githubusercontent.com/Mesh-LLM/mesh-llm/main/install.sh \
   | MESH_LLM_INSTALL_FLAVOR=cuda-blackwell bash
 ```
 
+> **Fork note:** these commands fetch the installer from upstream
+> `Mesh-LLM/mesh-llm`, so they install upstream builds — the fork's own
+> `install.sh` has no fork releases to download from yet. Use the same
+> flavor variables with the fork's installer once fork releases exist.
+
 The auto-detection path checks `nvidia-smi --query-gpu=compute_cap`
 first and falls back to `/proc/driver/nvidia/gpus/*/information` model
 names when `nvidia-smi` cannot report compute capability.

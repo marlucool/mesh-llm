@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2026 marlucool <marlu.manning@gmail.com>
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::{Context, Result};
@@ -393,7 +393,7 @@ fn write_json_file(output_dir: &Path, file_name: &str, value: &Value) -> Result<
     let path = output_dir.join(file_name);
     let json = serde_json::to_string_pretty(value)?;
     std::fs::write(&path, json)
-        .with_context(|| format!("write diagnostic file {}", path.display()))?;
+        .with_context(|| format!("write diagnostic file {}", path.display()))?
     Ok(path)
 }
 

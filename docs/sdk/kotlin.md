@@ -2,6 +2,14 @@
 
 Use the GitHub Packages Maven registry for `Mesh-LLM/mesh-llm`.
 
+> **Fork note:** the Maven registry below is
+> `maven.pkg.github.com/Mesh-LLM/mesh-llm` — packages published by upstream
+> [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm). This fork cannot
+> publish to that registry and does not publish its own SDK packages yet, so
+> resolving from it gives you upstream code (without fork-only changes such as
+> the Tailscale integration). Build the AAR from this checkout for a fork
+> build.
+
 ## Install
 
 ```text

@@ -105,10 +105,7 @@ pub(crate) fn default_join_token_file(config_override: Option<&Path>) -> Option<
 
 /// Persist an explicitly supplied invite token so a service/dashboard can
 /// reconnect after the machine restarts.
-pub(crate) fn persist_join_token(
-    config_override: Option<&Path>,
-    token: &str,
-) -> Result<PathBuf> {
+pub(crate) fn persist_join_token(config_override: Option<&Path>, token: &str) -> Result<PathBuf> {
     let token = token.trim();
     if token.is_empty() {
         bail!("cannot persist an empty invite token");
@@ -440,8 +437,8 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let config = temp.path().join("config.toml");
 
-        let path = persist_join_token(Some(&config), "remembered-token")
-            .expect("token should persist");
+        let path =
+            persist_join_token(Some(&config), "remembered-token").expect("token should persist");
 
         assert_eq!(path, temp.path().join(DEFAULT_JOIN_TOKEN_FILE_NAME));
         assert_eq!(

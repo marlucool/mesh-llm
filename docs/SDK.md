@@ -42,6 +42,16 @@ run inference but cannot currently serve local models.
 
 The SDK packages are published from MeshLLM releases:
 
+> **Fork note:** the packages below are owned and published by upstream
+> [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm) — crates.io
+> `mesh-llm-sdk`, npm `@mesh-llm/sdk`, the SwiftPM repository URL, and the
+> GitHub Packages Maven registry all resolve to upstream builds. This fork
+> (`marlucool/mesh-llm`) does not publish releases or its own SDK packages yet;
+> installing the packages below gives you upstream code (without fork-only
+> changes such as the Tailscale integration), and the fork's local code may be
+> ahead of the latest published version. Build from this repository's `sdk/`
+> sources for a fork build.
+
 | SDK | Package source |
 |---|---|
 | Python | PyPI package `mesh-llm` |

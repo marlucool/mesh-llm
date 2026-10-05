@@ -51,10 +51,8 @@ installed binary:
 
 Do not make a mesh public unless the user explicitly asks. Do not post an
 invite token, credentials, host inventory, or private paths to a public service.
-The default join token is connectivity material, not a bearer authorization
-credential or a strong identity/admission policy. Unpublished is not the same
-as access-controlled; the publication status `private` only means unpublished.
-For an untrusted network or controlled membership,
+An ordinary private invite is connectivity material, not a strong
+identity/admission policy. For an untrusted network or controlled membership,
 stop and discuss the owner identity and trust-policy options in
 <https://meshllm.cloud/MESHES.md> before enrolling nodes.
 
@@ -160,6 +158,16 @@ prerelease.
 If Mesh is absent, offer the official installer. The Unix installer supports
 Apple Silicon macOS, Linux x86_64, and Linux aarch64:
 
+> **Fork note:** this runbook's `meshllm.cloud` installer URLs (and the
+> Homebrew tap below) download builds from upstream
+> [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm) releases. This
+> fork (`marlucool/mesh-llm`) does not publish releases yet, so there is no
+> installer that ships fork builds (including the Tailscale integration) —
+> build from source (`just build`) for a fork build. Likewise, do not run
+> `mesh-llm update` on a fork-built binary: the self-updater's default release
+> repository is still upstream, so it would silently replace the fork binary
+> with an upstream build.
+
 ```sh
 curl -fsSL https://meshllm.cloud/install.sh | bash
 ```
@@ -179,6 +187,8 @@ On Apple Silicon macOS, the canonical Homebrew tap is also available:
 ```sh
 brew install Mesh-LLM/tap/mesh-llm
 ```
+
+The Homebrew formula downloads upstream release archives, not fork builds.
 
 Intel macOS is not currently available through Homebrew.
 
@@ -370,7 +380,7 @@ Tell the user that the final command remains in the foreground and should keep
 running. If a block fails before the node joins, the main node cannot see its
 local error. Ask for the terminal output, or offer SSH-based inspection.
 
-To run a node joining a mesh as a service instead of a foreground process, do not
+To run a private-mesh node as a service instead of a foreground process, do not
 hand-edit the generated unit. `setup --service` installs a unit whose command
 is a bare `serve`, and the only non-default inputs it reads are
 `~/.mesh-llm/config.toml` and `~/.config/mesh-llm/service.env` (systemd loads
