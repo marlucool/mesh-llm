@@ -40,7 +40,7 @@ permissions:
 jobs:
   core:
     name: Core inference smoke
-    if: ${{ contains(fromJson(inputs.smoke_matrix).*.id, 'core') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (contains(fromJson(inputs.smoke_matrix).*.id, 'core')) }}
     uses: ./.github/workflows/smoke.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -54,7 +54,7 @@ jobs:
 
   two_node_client:
     name: Two-node client smoke
-    if: ${{ contains(fromJson(inputs.smoke_matrix).*.id, 'two-node-client') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (contains(fromJson(inputs.smoke_matrix).*.id, 'two-node-client')) }}
     uses: ./.github/workflows/scripted-binary-smoke.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -70,7 +70,7 @@ jobs:
 
   two_node_split:
     name: KV caching smoke (dense + recurrent)
-    if: ${{ contains(fromJson(inputs.smoke_matrix).*.id, 'two-node-split') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (contains(fromJson(inputs.smoke_matrix).*.id, 'two-node-split')) }}
     uses: ./.github/workflows/scripted-binary-smoke.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -91,7 +91,7 @@ jobs:
 
   core_cuda:
     name: CUDA inference smoke
-    if: ${{ contains(fromJson(inputs.smoke_matrix).*.id, 'core-cuda') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (contains(fromJson(inputs.smoke_matrix).*.id, 'core-cuda')) }}
     uses: ./.github/workflows/smoke.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -104,7 +104,7 @@ jobs:
 
   model_download:
     name: Model download smoke
-    if: ${{ contains(fromJson(inputs.smoke_matrix).*.id, 'model-download') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (contains(fromJson(inputs.smoke_matrix).*.id, 'model-download')) }}
     uses: ./.github/workflows/hf-download-smoke.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -184,7 +184,7 @@ jobs:
   # reaches main.
   gpu_runner_gate:
     name: GPU runner gate
-    if: ${{ contains(fromJson(inputs.smoke_matrix).*.id, 'core') && (contains(fromJson(inputs.runtime_matrix).*.id, 'linux-vulkan') || contains(fromJson(inputs.runtime_matrix).*.id, 'linux-rocm')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (contains(fromJson(inputs.smoke_matrix).*.id, 'core') && (contains(fromJson(inputs.runtime_matrix).*.id, 'linux-vulkan') || contains(fromJson(inputs.runtime_matrix).*.id, 'linux-rocm'))) }}
     runs-on: ubuntu-24.04
     outputs:
       vulkan_enabled: ${{ steps.check.outputs.vulkan_enabled }}
