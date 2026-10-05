@@ -44,7 +44,7 @@ permissions:
 jobs:
   metal_model_load:
     name: Metal model-load smoke
-    if: ${{ contains(fromJson(inputs.smoke_matrix).*.id, 'metal-model-load') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (contains(fromJson(inputs.smoke_matrix).*.id, 'metal-model-load')) }}
     uses: ./.github/workflows/smoke.yml
     with:
       source_sha: ${{ inputs.source_sha }}
