@@ -69,7 +69,7 @@ jobs:
 
   ui_artifact:
     name: Console artifact
-    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (fromJson(inputs.lane_plan_json).matrices.hosts[0] != null) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (fromJson(inputs.lane_plan_json).matrices.hosts[0] != null) }}
     uses: ./.github/workflows/ci-ui-artifact-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -81,7 +81,7 @@ jobs:
   hosts:
     name: Neutral Windows host
     needs: [ui_artifact]
-    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.ui_artifact.result == 'success' && fromJson(inputs.lane_plan_json).matrices.hosts[0] != null) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (!cancelled() && needs.ui_artifact.result == 'success' && fromJson(inputs.lane_plan_json).matrices.hosts[0] != null) }}
     uses: ./.github/workflows/ci-windows-host-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -95,7 +95,7 @@ jobs:
 
   native_runtimes:
     name: Native Windows runtimes
-    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (fromJson(inputs.lane_plan_json).matrices.runtime_products[0] != null) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (fromJson(inputs.lane_plan_json).matrices.runtime_products[0] != null) }}
     uses: ./.github/workflows/ci-windows-runtime-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -108,7 +108,7 @@ jobs:
   runtime_product:
     name: Windows products
     needs: [hosts, native_runtimes]
-    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.hosts.result == 'success' && needs.native_runtimes.result == 'success') }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (!cancelled() && needs.hosts.result == 'success' && needs.native_runtimes.result == 'success') }}
     uses: ./.github/workflows/ci-windows-product-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -120,7 +120,7 @@ jobs:
 
   platform_checks:
     name: Windows checks
-    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (fromJson(inputs.lane_plan_json).matrices.platform_checks[0] != null) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (fromJson(inputs.lane_plan_json).matrices.platform_checks[0] != null) }}
     uses: ./.github/workflows/ci-platform-checks-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -134,7 +134,7 @@ jobs:
   product_smoke:
     name: Windows product smoke
     needs: [runtime_product]
-    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled() && needs.runtime_product.result == 'success' && fromJson(inputs.lane_plan_json).matrices.smoke[0] != null) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (!cancelled() && needs.runtime_product.result == 'success' && fromJson(inputs.lane_plan_json).matrices.smoke[0] != null) }}
     uses: ./.github/workflows/ci-windows-product-smoke-slice.yml
     with:
       source_sha: ${{ inputs.source_sha }}
@@ -147,7 +147,7 @@ jobs:
   summary:
     name: CI / Windows
     needs: [ui_artifact, hosts, native_runtimes, runtime_product, platform_checks, product_smoke]
-    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha) && (!cancelled()) }}
+    if: ${{ (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) && (!cancelled()) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
