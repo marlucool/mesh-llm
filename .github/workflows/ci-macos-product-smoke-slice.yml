@@ -80,4 +80,4 @@ jobs:
           expected_backend: metal
           device: MTL0
           model_cadence: ${{ inputs.original_event_name == 'push' && 'main' || inputs.original_event_name == 'pull_request' && 'pull-request' || 'manual' }}
-          save_model_cache: ${{ inputs.original_event_name == 'push' }}
+          save_model_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.original_event_name == 'push' }}
