@@ -196,8 +196,12 @@ runs:
           "${artifact_args[@]+"${artifact_args[@]}"}" \
           --verify-root "$HOME/.models"
 
+    # Only trusted pushes to the default branch may publish a model cache.
+    # Do not trust a caller-provided save_model_cache flag alone: a manually
+    # dispatched workflow can check out a different source SHA, and code from
+    # that revision must not write into the default-branch cache scope.
     - name: Save integration model cache
-      if: ${{ steps.resolve-model.outputs.url != '' && steps.resolve-model.outputs.file != '' && inputs.save_model_cache == 'true' && steps.cache-model.outputs.cache-hit != 'true' }}
+      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.resolve-model.outputs.url != '' && steps.resolve-model.outputs.file != '' && inputs.save_model_cache == 'true' && steps.cache-model.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: ~/.models/${{ steps.resolve-model.outputs.file }}
