@@ -168,7 +168,7 @@ jobs:
       ui_artifact_name: ci-ui-dist-linux-${{ github.run_id }}
       profile: release
     secrets:
-      HF_TOKEN: ${{ inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
+      HF_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
 
   product_smoke:
     name: Linux product smoke
@@ -183,7 +183,7 @@ jobs:
       binary_target: target/release/mesh-llm
       timeout_minutes: 45
     secrets:
-      HF_TOKEN: ${{ inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
+      HF_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
 
   summary:
     name: CI / Linux
