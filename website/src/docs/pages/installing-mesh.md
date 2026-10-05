@@ -6,6 +6,13 @@ title: Installing Mesh
 
 Mesh runs on macOS, Linux, and Windows. Choose your platform for detailed install instructions.
 
+> **Fork note:** this website's install instructions and `meshllm.cloud`
+> installer URLs download builds from upstream
+> [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm) releases. This fork
+> (`marlucool/mesh-llm`) does not publish releases yet, so there is no
+> installer that ships fork builds (including the Tailscale integration) —
+> build from source (`just build`) for a fork build.
+
 The shell and PowerShell installers below remain the simplest installation
 path. Versioned Homebrew formulas, Linux native packages, checksums, SBOMs, and
 OCI images are published by the public

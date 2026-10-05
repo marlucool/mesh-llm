@@ -6,6 +6,13 @@ title: Swift and Apple SDK
 
 Use the `MeshLLM` SwiftPM product in macOS, Mac Catalyst, and iOS applications. Tagged releases resolve the prebuilt `MeshLLMFFI.xcframework` automatically; local checkout builds use the same UniFFI-backed implementation.
 
+> **Fork note:** the SwiftPM URL below resolves to upstream
+> [Mesh-LLM/mesh-llm](https://github.com/Mesh-LLM/mesh-llm), not this fork —
+> this fork does not publish releases or Swift packages, so resolving the
+> package gives you upstream code (without fork-only changes such as the
+> Tailscale integration). Build the XCFramework from this checkout for a fork
+> build.
+
 ## Install
 
 Add the tagged Mesh-LLM package to `Package.swift`:

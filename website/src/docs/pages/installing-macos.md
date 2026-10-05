@@ -33,7 +33,8 @@ The fully qualified formula name adds the tap automatically. Update later with
 `brew update` followed by `brew upgrade mesh-llm`.
 
 The formula downloads the checksummed Metal release archive from
-`Mesh-LLM/mesh-llm`. `Mesh-LLM/mesh-packaging` produces and validates each
+`Mesh-LLM/mesh-llm` — that is, the formula installs **upstream builds, not
+fork builds**. `Mesh-LLM/mesh-packaging` produces and validates each
 formula before the tap publishes it. Intel macOS is not available through
 Homebrew because the upstream release does not include an x86_64 macOS archive.
 
