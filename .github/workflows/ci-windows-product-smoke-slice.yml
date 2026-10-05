@@ -40,9 +40,17 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Checkout current revision for manual dispatch
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || inputs.source_sha }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Checkout requested source for automated CI
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
