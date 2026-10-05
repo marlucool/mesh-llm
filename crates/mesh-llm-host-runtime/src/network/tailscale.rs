@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2026 marlucool <marlu.manning@gmail.com>
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::{Context, Result, bail};
@@ -399,7 +399,7 @@ fn compare_doctor_peer(a: &TailscaleDoctorPeer, b: &TailscaleDoctorPeer) -> Orde
             .then_with(|| a.hostname.cmp(&b.hostname)),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        (None, None) => a.hostname.cmp(&b.hostname),
+        (None, None) => a.hostname.cmp(&b_hostname),
     }
 }
 
