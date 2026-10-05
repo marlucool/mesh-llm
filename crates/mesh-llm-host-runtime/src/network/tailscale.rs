@@ -9,12 +9,32 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::process::Command;
+use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
 const DEFAULT_MESH_API_PORT: u16 = 9337;
 const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const TAILSCALE_PROBE_CONCURRENCY: usize = 16;
 const REQUIRED_MESHLLM_TAILSCALE_TAG: &str = "tag:mesh-llm";
+/// How long a successful `tailscale status --json` snapshot may be reused
+/// before a fresh one is spawned. Discovery, doctor, and per-request peer
+/// authorization all shell out otherwise; a short TTL keeps authorization
+/// decisions responsive to ACL/tag changes without paying a subprocess per
+/// request.
+const STATUS_CACHE_TTL: Duration = Duration::from_secs(5);
+/// Extra time a snapshot may serve after a refresh *fails* — bounded
+/// staleness is safer for authorization than failing closed on a single
+/// transient `tailscale` hiccup, and is still short enough that a revoked
+/// peer loses access promptly.
+const STATUS_CACHE_STALE_MAX: Duration = Duration::from_secs(60);
+
+struct CachedTailscaleStatus {
+    status: TailscaleStatus,
+    fetched_at: Instant,
+}
+
+/// Process-wide cache of the last `tailscale status --json` snapshot.
+static STATUS_CACHE: StdMutex<Option<CachedTailscaleStatus>> = StdMutex::new(None);
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct TailscaleMeshPeer {
@@ -55,7 +75,7 @@ pub struct TailscaleDoctorReport {
     pub peers: Vec<TailscaleDoctorPeer>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct TailscaleStatus {
     #[serde(rename = "Self")]
     self_peer: TailscalePeer,
@@ -63,7 +83,7 @@ struct TailscaleStatus {
     peers: HashMap<String, TailscalePeer>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct TailscalePeer {
     #[serde(rename = "HostName", default)]
     hostname: String,
@@ -399,7 +419,7 @@ fn compare_doctor_peer(a: &TailscaleDoctorPeer, b: &TailscaleDoctorPeer) -> Orde
             .then_with(|| a.hostname.cmp(&b.hostname)),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        (None, None) => a.hostname.cmp(&b_hostname),
+        (None, None) => a.hostname.cmp(&b.hostname),
     }
 }
 
@@ -425,6 +445,68 @@ fn has_meshllm_tag(peer: &TailscalePeer) -> bool {
 }
 
 fn read_status() -> Result<TailscaleStatus> {
+    read_status_cached()
+}
+
+/// Read `tailscale status --json` with a short process-wide cache.
+///
+/// Within [`STATUS_CACHE_TTL`] the last successful snapshot is served as-is.
+/// After that a refresh is attempted; if the refresh fails and the cached
+/// snapshot is no older than [`STATUS_CACHE_STALE_MAX`], the stale snapshot
+/// is served (bounded staleness over a hard failure for availability).
+/// Beyond the stale window the refresh error is propagated, which makes the
+/// join-endpoint authorization fail closed (503) as before.
+fn read_status_cached() -> Result<TailscaleStatus> {
+    {
+        let cache = STATUS_CACHE
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
+        if let Some(cached) = cache.as_ref() {
+            if cached.fetched_at.elapsed() <= STATUS_CACHE_TTL {
+                return Ok(cached.status.clone());
+            }
+        }
+    }
+
+    let fresh = run_tailscale_status();
+
+    match fresh {
+        Ok(status) => {
+            let cache = STATUS_CACHE
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
+            *cache = Some(CachedTailscaleStatus {
+                status: status.clone(),
+                fetched_at: Instant::now(),
+            });
+            Ok(status)
+        }
+        Err(error) => {
+            let serve_stale = {
+                let cache = STATUS_CACHE
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
+                cache.as_ref().is_some_and(|cached| {
+                    cached.fetched_at.elapsed() <= STATUS_CACHE_TTL + STATUS_CACHE_STALE_MAX
+                })
+            };
+            if serve_stale {
+                // Serve the stale snapshot instead of failing on a transient
+                // `tailscale` hiccup; the next caller past the TTL will
+                // attempt a fresh refresh again.
+                let cache = STATUS_CACHE
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
+                if let Some(cached) = cache.as_ref() {
+                    return Ok(cached.status.clone());
+                }
+            }
+            Err(error)
+        }
+    }
+}
+
+fn run_tailscale_status() -> Result<TailscaleStatus> {
     let output = Command::new("tailscale")
         .args(["status", "--json"])
         .output()
