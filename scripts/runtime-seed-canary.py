@@ -14,9 +14,9 @@ import time
 import urllib.parse
 import urllib.request
 
-IMAGE = 'ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d'
+IMAGE = 'ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631'
 EPOCH = 'mesh-llm-cuda-runner-sha256-' + IMAGE.split(':')[-1]
-KEY_PREFIX = 'mesh-llm-sccache-seed-linux-x86_64-img-8d93de6b-epoch-8d93de6b-v2-'
+KEY_PREFIX = 'mesh-llm-sccache-seed-linux-x86_64-img-54571367-epoch-54571367-v2-'
 BUILD_DIR = '.deps/llama.cpp/build-stage-abi-dynamic-cpu'
 
 
