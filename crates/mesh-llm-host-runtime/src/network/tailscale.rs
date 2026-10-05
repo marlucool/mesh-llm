@@ -216,7 +216,11 @@ pub async fn doctor(timeout: Duration) -> TailscaleDoctorReport {
 
     let total_peer_count = status.peers.len();
     let online_peer_count = status.peers.values().filter(|peer| peer.online).count();
-    let tagged_peer_count = status.peers.values().filter(|peer| has_meshllm_tag(peer)).count();
+    let tagged_peer_count = status
+        .peers
+        .values()
+        .filter(|peer| has_meshllm_tag(peer))
+        .count();
     let online_tagged_peer_count = status
         .peers
         .values()
@@ -237,7 +241,12 @@ pub async fn doctor(timeout: Duration) -> TailscaleDoctorReport {
                     .peers
                     .into_values()
                     .filter(|peer| has_meshllm_tag(peer))
-                    .filter(|peer| !peer.addresses.iter().any(|addr| self_addresses.contains(addr))),
+                    .filter(|peer| {
+                        !peer
+                            .addresses
+                            .iter()
+                            .any(|addr| self_addresses.contains(addr))
+                    }),
             )
             .map(|peer| {
                 let client = client.clone();
@@ -320,11 +329,7 @@ async fn probe_peer(peer: TailscalePeer, client: Client) -> PeerProbe {
     for ip in addresses {
         let api_base_url = api_base_url(ip);
         let started = Instant::now();
-        let response = match client
-            .get(format!("{api_base_url}/v1/models"))
-            .send()
-            .await
-        {
+        let response = match client.get(format!("{api_base_url}/v1/models")).send().await {
             Ok(response) if response.status().is_success() => response,
             _ => continue,
         };
@@ -436,7 +441,9 @@ fn matches_target_name(peer: &TailscalePeer, target_name: Option<&str>) -> bool 
 }
 
 fn has_meshllm_tag(peer: &TailscalePeer) -> bool {
-    peer.tags.iter().any(|tag| tag == REQUIRED_MESHLLM_TAILSCALE_TAG)
+    peer.tags
+        .iter()
+        .any(|tag| tag == REQUIRED_MESHLLM_TAILSCALE_TAG)
 }
 
 fn read_status() -> Result<TailscaleStatus> {
@@ -478,7 +485,7 @@ fn read_status_cached() -> Result<TailscaleStatus> {
         // cannot refresh it. After the short TTL, a Tailscale failure must
         // fail closed rather than retain access for a peer whose tag/ACL was
         // revoked while the daemon is unavailable.
-        Err(error) => Err(error)
+        Err(error) => Err(error),
     }
 }
 
