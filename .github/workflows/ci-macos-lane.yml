@@ -158,7 +158,7 @@ jobs:
       ui_artifact_name: ci-ui-dist-macos-${{ github.run_id }}
       swift_mode: ${{ (fromJson(inputs.lane_plan_json).profile == 'main' || fromJson(inputs.lane_plan_json).profile == 'manual-full') && 'full' || 'host-only' }}
     secrets:
-      HF_TOKEN: ${{ inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
+      HF_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
 
   product_smoke:
     name: Metal product smoke
@@ -174,7 +174,7 @@ jobs:
       binary_target: target/release/mesh-llm
       timeout_minutes: 45
     secrets:
-      HF_TOKEN: ${{ inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
+      HF_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.original_event_name == 'push' && secrets.HF_TOKEN || '' }}
 
   summary:
     name: CI / macOS
