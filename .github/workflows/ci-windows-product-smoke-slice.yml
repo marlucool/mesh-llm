@@ -36,7 +36,7 @@ permissions:
 jobs:
   laya_cpu:
     name: Laya smoke (Windows CPU)
-    if: ${{ contains(fromJson(inputs.runtime_matrix).*.id, 'windows-cpu') && contains(fromJson(inputs.smoke_matrix).*.id, 'core') }}
+    if: ${{ contains(fromJson(inputs.runtime_matrix).*.id, 'windows-cpu') && contains(fromJson(inputs.smoke_matrix).*.id, 'core') && (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.source_sha == github.sha)) }}
     runs-on: windows-2022
     timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
