@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/marlucool/mesh-llm-ci-runner
+  IMAGE: ghcr.io/${{ github.repository_owner }}/mesh-llm-ci-runner
   RUNNER_IMAGES_SHA: 6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2
 
 jobs:
