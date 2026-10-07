@@ -20,4 +20,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify every catalog digest is anonymously pullable
-        run: scripts/check-runner-image-pullability.sh
+        run: bash scripts/check-runner-image-pullability.sh
