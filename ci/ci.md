@@ -905,6 +905,22 @@ exist. Other consumer workload coverage remains unknown. The measured CPU
 runtime workload had zero seed hits in all three warm samples; the separate
 `diagnose` command reports deliberate runtime exclusion. The checker rejects
 re-enablement independently of architecture spelling.
+
+
+Fork-owned runner image source is intentional: pinned Dockerfile recipes are
+checked out from `Mesh-LLM/mesh-llm-runner-images` at
+`6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2`, but the fork publishes the
+build outputs to `ghcr.io/marlucool/mesh-llm-ci-runner`. No fork CI job should
+pull from the upstream organization's `ghcr.io/mesh-llm/mesh-llm-cuda-runner`
+package. `.github/workflows/build-fork-runner-images.yml` is the controlled
+manual publisher; it emits a separate immutable digest artifact per image
+family. Updates to `ci/runner-images.json`, `ci/slices.yml`, workflow image
+bindings, native epochs and the compiler seed key must be reviewed together
+after a rebuild. Consumer container jobs authenticate with
+`container.credentials` (`github.actor`/`github.token`) and declare
+`packages: read`. The release preflight checks actual authenticated access,
+not anonymous visibility. Historical receipts for the previous upstream image
+digests are not treated as provenance for the rebuilt fork package.
 These four high-fanout job families also disable the per-object GHA backend on
 every provider. Small exact native
 caches have substantially better reuse-to-storage value. Cache hits are always
