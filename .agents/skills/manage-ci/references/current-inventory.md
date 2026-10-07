@@ -478,7 +478,7 @@ A called reusable workflow may not request a permission scope its caller job
 does not grant; GitHub rejects at run creation with a **zero-job
 `startup_failure`** -- no jobs, no logs, no check run on the commit, and
 `actionlint` cannot see it. Containerizing surfaced this because
-`packages: read` (needed to pull the private GHCR runner images) has to be
+`packages: read` (needed to pull the fork-owned private GHCR runner images) has to be
 granted at *every* hop, and
 `ci-linux-product-smoke-slice.yml` / `ci-macos-product-smoke-slice.yml` sat at
 `contents: read` between granted parents and requesting children.
@@ -559,27 +559,29 @@ continue to compose normally. Seven call sites:
 
 ### A pinned digest is a frozen artifact
 
-`mesh-llm-runner-images` HEAD says nothing about what is inside the digest a
-workflow pins -- the `public cpu` digest pinned in `ci/slices.yml` was built
-2026-07-22 and does not contain changes merged to that repo afterwards
-(the `smoke.yml` openai bake landed a week later, in #20). Before deleting or
-gating a dependency install on the grounds that "the image bakes it,"
-confirm the capability exists **in the pinned digest**, and confirm it from a
-green run of the job that needs it. `verify-runner-image`'s JSON is the
-cheap probe: `mesh_llm_revision` dates the build, and missing keys (added to
-the asserted object in later `mesh-llm-runner-images` commits) date the
-baked verify script itself.
+A pinned digest is an immutable artifact, independent of the latest
+`mesh-llm-runner-images` source. The fork's runner images are rebuilt from
+the recipe revision pinned in `.github/workflows/build-fork-runner-images.yml`
+and the fork's trusted `main` source revision; each successful job uploads
+the image ID, tag and immutable digest. The referenced digest and toolchain
+epoch must match `ci/runner-images.json` and `ci/slices.yml`.
+Before deleting or gating a dependency install on the grounds that "the image
+bakes it," confirm the capability exists **in the pinned digest**, and confirm
+it from a green run of the job that needs it. `verify-runner-image`'s JSON is
+the cheap probe: `mesh_llm_revision` dates the source snapshot, while missing
+keys (added to the asserted object in later recipe revisions) date the baked
+verify script itself.
 
 ### Digest promotion
 
-`build-and-push.yml` (in `mesh-llm-runner-images`) runs `stage_families` for
-both `operation=stage` and `operation=promote`; `promote_versioned` reads the
-candidate descriptor artifact from that **same run**, not from an earlier
-stage run. A `promote` dispatch therefore re-stages and promotes its own
-build. Read the digest to pin from the promote job's own `digest=` output
-(e.g. `promoted ghcr.io/... -> sha256:...` in its log) -- never carry forward
-a digest observed from an earlier stage-only run, even one at the same
-source commit.
+The upstream `build-and-push.yml` continues to manage upstream image
+promotion. It is not the source of pullable images for this fork: the
+fork-owned publisher `.github/workflows/build-fork-runner-images.yml` writes
+per-family digest artifacts directly to this fork's GHCR package. Pin the
+digest reported by that exact successful fork build job, then update the
+catalog, runtime rows, workflow bindings and image-derived cache identity in
+the same reviewed change. Never copy a digest from a different image family
+or rely on its mutable bootstrap tag.
 
 ## Planner contract
 
