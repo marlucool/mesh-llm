@@ -13,7 +13,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: fork-runner-image-build-${{ github.ref }}
+  group: fork-runner-image-build-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 env:
@@ -31,48 +31,6 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - image_id: public-cpu
-            dockerfile: Dockerfile
-            backend: cpu
-            cuda_series: none
-            rocm_version: none
-            platforms: linux/amd64,linux/arm64
-          - image_id: public-web
-            dockerfile: Dockerfile
-            backend: web
-            cuda_series: none
-            rocm_version: none
-            platforms: linux/amd64
-          - image_id: public-cuda12
-            dockerfile: Dockerfile
-            backend: cuda
-            cuda_series: 12-9
-            rocm_version: none
-            platforms: linux/amd64,linux/arm64
-          - image_id: public-cuda13
-            dockerfile: Dockerfile
-            backend: cuda
-            cuda_series: 13-1
-            rocm_version: none
-            platforms: linux/amd64,linux/arm64
-          - image_id: public-rocm-ci
-            dockerfile: Dockerfile
-            backend: rocm
-            cuda_series: none
-            rocm_version: 7.0
-            platforms: linux/amd64
-          - image_id: public-rocm-release
-            dockerfile: Dockerfile
-            backend: rocm
-            cuda_series: none
-            rocm_version: 7.2.3
-            platforms: linux/amd64
-          - image_id: public-vulkan
-            dockerfile: Dockerfile
-            backend: vulkan
-            cuda_series: none
-            rocm_version: none
-            platforms: linux/amd64,linux/arm64
           - image_id: public-ui
             dockerfile: Dockerfile.ui
             backend: ui
