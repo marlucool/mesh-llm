@@ -54,7 +54,7 @@ jobs:
             dockerfile: Dockerfile
             backend: rocm
             cuda_series: none
-            rocm_version: 7.0
+            rocm_version: "7.0"
             platforms: linux/amd64
           - image_id: public-rocm-release
             dockerfile: Dockerfile
