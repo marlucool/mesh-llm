@@ -16,7 +16,7 @@
       ],
       "digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
       "environment": "public",
-      "image": "ghcr.io/mesh-llm/mesh-llm-cuda-runner",
+      "image": "ghcr.io/marlucool/mesh-llm-ci-runner",
       "mesh_revision": "1111111111111111111111111111111111111111",
       "runner_images_revision": "2222222222222222222222222222222222222222",
       "schema": 1,
@@ -38,7 +38,7 @@
       ],
       "digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
       "environment": "public",
-      "image": "ghcr.io/mesh-llm/mesh-llm-cuda-runner",
+      "image": "ghcr.io/marlucool/mesh-llm-ci-runner",
       "mesh_revision": "1111111111111111111111111111111111111111",
       "runner_images_revision": "2222222222222222222222222222222222222222",
       "schema": 1,
@@ -46,7 +46,7 @@
     }
   },
   "catalog_sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
-  "image": "ghcr.io/mesh-llm/mesh-llm-cuda-runner",
+  "image": "ghcr.io/marlucool/mesh-llm-ci-runner",
   "origin": {
     "event": "push",
     "mesh_revision": "1111111111111111111111111111111111111111",
@@ -71,7 +71,7 @@
         "child_digest": "sha256:b66bebea0efdf3b8fe191898dedb6e71481616b248ef42cffe887a522601aa34",
         "digest": "sha256:8c56394e20567a4268be3b81b8a278bd396540cbd9157442613e20344fb9a14e",
         "environment": "public",
-        "image": "ghcr.io/mesh-llm/mesh-llm-cuda-runner",
+        "image": "ghcr.io/marlucool/mesh-llm-ci-runner",
         "mesh_revision": "1111111111111111111111111111111111111111",
         "platform": {
           "architecture": "amd64",
@@ -85,7 +85,7 @@
       "manifest_base64": "eyJjb25maWciOnsiZGlnZXN0Ijoic2hhMjU2OmI2YzYxYWJlYTJhMTNlZmQwNDkwNzhjY2UzYWQyNzZhMDNhNTIzYzE0N2FjZDUwOTFmMmY4ZjFhNjU3ZTNkMTQiLCJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLmNvbmZpZy52MStqc29uIiwic2l6ZSI6MTUxfSwibGF5ZXJzIjpbeyJkaWdlc3QiOiJzaGEyNTY6OTQ4ZjhiMWEyY2VmYTI1MzgwMGY1YTcxMDJkZjI0ODI5Mjc2ZWM4MDQ3NWE2NzY4N2Y0M2IyMzFiM2M1M2FjNCIsIm1lZGlhVHlwZSI6ImFwcGxpY2F0aW9uL3ZuZC5vY2kuaW1hZ2UubGF5ZXIudjEudGFyK2d6aXAiLCJzaXplIjoxM31dLCJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJzY2hlbWFWZXJzaW9uIjoyfQ==",
       "receipt": {
         "backend_id": "cpu",
-        "image": "ghcr.io/mesh-llm/mesh-llm-cuda-runner",
+        "image": "ghcr.io/marlucool/mesh-llm-ci-runner",
         "layers": [
           {
             "compression": "gzip",
@@ -220,7 +220,7 @@
         "child_digest": "sha256:b66bebea0efdf3b8fe191898dedb6e71481616b248ef42cffe887a522601aa34",
         "digest": "sha256:8c56394e20567a4268be3b81b8a278bd396540cbd9157442613e20344fb9a14e",
         "environment": "public",
-        "image": "ghcr.io/mesh-llm/mesh-llm-cuda-runner",
+        "image": "ghcr.io/marlucool/mesh-llm-ci-runner",
         "mesh_revision": "1111111111111111111111111111111111111111",
         "platform": {
           "architecture": "amd64",
@@ -234,7 +234,7 @@
       "manifest_base64": "eyJjb25maWciOnsiZGlnZXN0Ijoic2hhMjU2OmI2YzYxYWJlYTJhMTNlZmQwNDkwNzhjY2UzYWQyNzZhMDNhNTIzYzE0N2FjZDUwOTFmMmY4ZjFhNjU3ZTNkMTQiLCJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLmNvbmZpZy52MStqc29uIiwic2l6ZSI6MTUxfSwibGF5ZXJzIjpbeyJkaWdlc3QiOiJzaGEyNTY6OTQ4ZjhiMWEyY2VmYTI1MzgwMGY1YTcxMDJkZjI0ODI5Mjc2ZWM4MDQ3NWE2NzY4N2Y0M2IyMzFiM2M1M2FjNCIsIm1lZGlhVHlwZSI6ImFwcGxpY2F0aW9uL3ZuZC5vY2kuaW1hZ2UubGF5ZXIudjEudGFyK2d6aXAiLCJzaXplIjoxM31dLCJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJzY2hlbWFWZXJzaW9uIjoyfQ==",
       "receipt": {
         "backend_id": "vulkan",
-        "image": "ghcr.io/mesh-llm/mesh-llm-cuda-runner",
+        "image": "ghcr.io/marlucool/mesh-llm-ci-runner",
         "layers": [
           {
             "compression": "gzip",
