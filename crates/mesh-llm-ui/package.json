@@ -98,11 +98,20 @@
     "vitest": "5.0.0"
   },
   "overrides": {
-    "adm-zip": "0.6.0",
+    "adm-zip": "0.6.1",
     "brace-expansion": "5.0.9",
     "dompurify": "3.4.14",
-    "js-yaml": "4.3.1",
+    "js-yaml": "4.3.2",
     "protobufjs": "7.6.5",
-    "sharp": "0.35.0"
+    "sharp": "0.35.4",
+    "undici": "8.10.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "adm-zip": "0.6.1",
+      "js-yaml": "4.3.2",
+      "sharp": "0.35.4",
+      "undici": "8.10.2"
+    }
   }
 }
