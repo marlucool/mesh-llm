@@ -1999,6 +1999,9 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     env:
       SCCACHE_GHA_ENABLED: "false"
       SCCACHE_MULTILEVEL_CHAIN: disk
@@ -2031,6 +2034,9 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     env:
       SCCACHE_GHA_ENABLED: "false"
       SCCACHE_MULTILEVEL_CHAIN: disk
