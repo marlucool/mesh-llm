@@ -1,11 +1,6 @@
 name: Build fork-owned CI runner images
 
 on:
-  # Temporary bootstrap trigger. Remove this branch from the push filter once
-  # the first image set is published; future rebuilds are operator-dispatched.
-  push:
-    branches:
-      - security/bootstrap-ci-runner-images
   workflow_dispatch:
 
 permissions:
