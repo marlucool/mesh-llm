@@ -101,6 +101,9 @@ jobs:
         host: ${{ fromJson(inputs.hosts_matrix) }}
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     defaults:
       run:
         shell: bash
