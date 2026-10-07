@@ -34,7 +34,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY = "ghcr.io/mesh-llm/mesh-llm-cuda-runner"
+REPOSITORY = "ghcr.io/marlucool/mesh-llm-ci-runner"
 REFERENCE = re.compile(re.escape(REPOSITORY) + r"@sha256:([0-9a-f]{64})\Z")
 IDENTIFIER = re.compile(r"[a-z][a-z0-9_-]*\Z")
 EPOCH_PREFIX = "mesh-llm-cuda-runner-sha256-"
