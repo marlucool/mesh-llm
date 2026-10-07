@@ -27,7 +27,7 @@ class EvidenceTests(unittest.TestCase):
         self.image = self.catalog["images"]["public-cpu"]
         # Only test copies use the synthetic index; checked-in pins remain unchanged.
         self.image["reference"] = E.IMAGE + "@" + self.cohort["candidates"]["candidate-index-public-cpu"]["digest"]
-        self.image["native_toolchain_epoch"] = "mesh-llm-cuda-runner-sha256-" + "8" * 64
+        self.image["native_toolchain_epoch"] = "mesh-llm-ci-runner-sha256-" + "8" * 64
         self.catalog["compiler_seed"]["key_prefix"] = "mesh-llm-sccache-seed-linux-x86_64-img-88888888-epoch-88888888-v2-"
         self.anchor = {
             "receipt": {
@@ -161,7 +161,7 @@ class EvidenceTests(unittest.TestCase):
                 E.bind(self.catalog, "public-cpu", self.cohort_path, self.anchor_path, first)
                 catalog = json.loads((first / "ci/runner-images.json").read_text())
                 catalog["images"]["public-vulkan"]["reference"] = E.IMAGE + "@sha256:" + "7" * 64
-                catalog["images"]["public-vulkan"]["native_toolchain_epoch"] = "mesh-llm-cuda-runner-sha256-" + "7" * 64
+                catalog["images"]["public-vulkan"]["native_toolchain_epoch"] = "mesh-llm-ci-runner-sha256-" + "7" * 64
                 raw = self.raw if shared else self.raw + b" "
                 source = self.root / ("second-input-" + str(shared))
                 source.write_bytes(raw)
