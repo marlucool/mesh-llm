@@ -70,7 +70,7 @@ jobs:
       checks: write
       contents: read
       packages: read
-    uses: Mesh-LLM/mesh-llm/.github/workflows/ci-quality-lane.yml@main
+    uses: ./.github/workflows/ci-quality-lane.yml
     with:
       lane_plan_json: ${{ needs.plan.outputs.lane_plan }}
       canonical_plan_json: ${{ needs.plan.outputs.canonical_plan }}
