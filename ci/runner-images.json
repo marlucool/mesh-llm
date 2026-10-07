@@ -2,15 +2,15 @@
   "schema_version": 1,
   "images": {
     "public-cpu": {
-      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631",
+      "reference": "ghcr.io/marlucool/mesh-llm-ci-runner@sha256:f01150f4ddafecb8a55b621b0bb19a6f5bdecbd0f77f021a816eafb4ec479399",
       "environment": "public",
       "backend": "cpu",
-      "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-545713677420e3e4661d3a79586c38abb7eb906b4a3df26642ac86f90d5b7631",
+      "native_toolchain_epoch": "mesh-llm-ci-runner-sha256-f01150f4ddafecb8a55b621b0bb19a6f5bdecbd0f77f021a816eafb4ec479399",
       "receipt": null,
       "provenance": null
     },
     "public-web": {
-      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:1c73f0f2e4b2ce657cc9dc49c9c27374f3c364af19f884f1970331c3689da5d2",
+      "reference": "ghcr.io/marlucool/mesh-llm-ci-runner@sha256:f51d439334d4b2ca34bee30f08118e24c3c7efdca3d6a684e40aabbda29c01ac",
       "environment": "public",
       "backend": "web",
       "native_toolchain_epoch": null,
@@ -61,65 +61,17 @@
       "backend": "browser",
       "environment": "public",
       "native_toolchain_epoch": null,
-      "provenance": {
-        "schema": 1,
-        "scope": "reviewed_producer_admission",
-        "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
-        "origin": {
-          "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-          "repository": "Mesh-LLM/mesh-llm-runner-images",
-          "repository_id": 1210986689,
-          "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
-          "workflow_id": 318369515,
-          "workflow_path": ".github/workflows/build-and-push.yml"
-        },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
-      },
-      "receipt": {
-        "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
-        "index_candidate_key": "candidate-index-public-browser"
-      },
-      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:4c3f0a73b8d47c10f2ac98047b3f1ca226992dcff72cb57b029238c98b828f94"
+      "provenance": null,
+      "receipt": null,
+      "reference": "ghcr.io/marlucool/mesh-llm-ci-runner@sha256:867c1f16f4aea47b73ef7c068efb658a2d0bf07a9a78c6c04f5880fa6388cb72"
     },
     "public-ui": {
       "backend": "ui",
       "environment": "public",
       "native_toolchain_epoch": null,
-      "provenance": {
-        "schema": 1,
-        "scope": "reviewed_producer_admission",
-        "validation": "offline_binding_only",
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
-        "origin": {
-          "event": "push",
-          "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-          "repository": "Mesh-LLM/mesh-llm-runner-images",
-          "repository_id": 1210986689,
-          "run_attempt": 1,
-          "run_id": 34256062098,
-          "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-          "timestamp": "20260908171716",
-          "workflow_id": 318369515,
-          "workflow_path": ".github/workflows/build-and-push.yml"
-        },
-        "admission_validator_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684",
-        "mesh_revision": "8578d0f467de5ba659d376d52079ae1d63ed2871",
-        "runner_images_revision": "f73c2a956a992e55bc100fe9543fe60f4cc77684"
-      },
-      "receipt": {
-        "schema": 1,
-        "cohort_sha256": "sha256:27182b63ef62518a8084d6bd069899d88eacee7038c766a2fff20d196f4011aa",
-        "index_candidate_key": "candidate-index-public-ui"
-      },
-      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:b0fa8081c77334b47744f87a0dd46bf092dfc8badc75a832b72233feb026ec25"
+      "provenance": null,
+      "receipt": null,
+      "reference": "ghcr.io/marlucool/mesh-llm-ci-runner@sha256:62e55622d19865c2db209ed23f08dd5b57e9d7e3862332c7bbcb49c1329df8b5"
     }
   },
   "consumer_roles": {
@@ -620,7 +572,7 @@
   "compiler_seed": {
     "image_id": "public-cpu",
     "architecture": "amd64",
-    "key_prefix": "mesh-llm-sccache-seed-linux-x86_64-img-0d4e98e62d9e06419e87e1b1d10020a2eb2b0584086aa983795e1c5f2d933dd7-epoch-0d4e98e62d9e06419e87e1b1d10020a2eb2b0584086aa983795e1c5f2d933dd7-v3-",
+    "key_prefix": "mesh-llm-sccache-seed-linux-x86_64-img-f01150f4-epoch-f01150f4-v3-",
     "recipe_inputs": [
       "Cargo.lock",
       ".github/cache-version.txt",
