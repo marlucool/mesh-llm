@@ -3,7 +3,11 @@ name: Verify fork-owned runner image pullability
 on:
   push:
     branches:
-      - ci/use-fork-owned-runner-images
+      - main
+      - 'ci/**'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
