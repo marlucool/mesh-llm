@@ -10,7 +10,7 @@ import re
 
 MAX_BYTES = 32 * 1024 * 1024
 MAX_SAFE = 9007199254740991
-IMAGE = "ghcr.io/mesh-llm/mesh-llm-cuda-runner"
+IMAGE = "ghcr.io/marlucool/mesh-llm-ci-runner"
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 DIGEST = re.compile(r"sha256:[a-f0-9]{64}\Z")
 
