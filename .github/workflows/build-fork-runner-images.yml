@@ -168,6 +168,7 @@ jobs:
       - name: Record image digest
         shell: bash
         env:
+          IMAGE: ${{ env.IMAGE }}
           IMAGE_ID: ${{ matrix.image_id }}
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE_TAG: ${{ env.IMAGE }}:${{ matrix.image_id }}-bootstrap-${{ github.sha }}
@@ -186,8 +187,6 @@ jobs:
             echo
             echo "Temporary bootstrap tag: `$IMAGE_TAG`"
           } >> "$GITHUB_STEP_SUMMARY"
-        env:
-          IMAGE: ${{ env.IMAGE }}
 
       - name: Upload digest receipt
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
