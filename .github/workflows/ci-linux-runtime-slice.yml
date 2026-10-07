@@ -94,6 +94,9 @@ jobs:
         runtime: ${{ fromJson(inputs.runtime_matrix) }}
     container:
       image: ${{ matrix.runtime.container_image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     defaults:
       run:
         shell: bash
