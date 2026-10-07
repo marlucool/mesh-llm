@@ -34,10 +34,10 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY = "ghcr.io/mesh-llm/mesh-llm-cuda-runner"
+REPOSITORY = "ghcr.io/marlucool/mesh-llm-ci-runner"
 REFERENCE = re.compile(re.escape(REPOSITORY) + r"@sha256:([0-9a-f]{64})\Z")
 IDENTIFIER = re.compile(r"[a-z][a-z0-9_-]*\Z")
-EPOCH_PREFIX = "mesh-llm-cuda-runner-sha256-"
+EPOCH_PREFIX = "mesh-llm-ci-runner-sha256-"
 _evidence_spec = importlib.util.spec_from_file_location("runner_image_evidence", Path(__file__).with_name("runner-image-evidence.py"))
 EVIDENCE = importlib.util.module_from_spec(_evidence_spec)
 _evidence_spec.loader.exec_module(EVIDENCE)
