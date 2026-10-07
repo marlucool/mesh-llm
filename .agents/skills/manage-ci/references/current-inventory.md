@@ -345,40 +345,47 @@ Historical receipt, provenance and workload-coverage fields are explicitly
 unknown. `diagnose` reports deliberate runtime seed exclusion;
 matching image identity does not qualify the host seed for native runtime work.
 
-Some CI jobs run inside a `container:` pinned to a digest from the
-`mesh-llm-runner-images` repo instead of installing tooling per-run with
-`actions/setup-*`. There is no separate sister repo: the `public web`
-backend (baked Chromium/Playwright) lives on `mesh-llm-runner-images` main
-alongside every other family, added by `17283ab` (#20, the `public web`
-backend) and `5ea673b` (#21, the Playwright version assert). The GHCR
-package name
-`ghcr.io/mesh-llm/mesh-llm-cuda-runner` is legacy: it hosts every backend
-family (`public cpu`, `public cuda`, `public rocm`, `public vulkan`,
-`public web`, `public ui`, `public browser`, `self-hosted`), not only CUDA. Full native/web images bake
-`cargo cmake docker git jq just lld node ninja npm pnpm python rustc sccache`
-(asserted by `verify-runner-image`, see below) plus a Python venv on `PATH`
-(`VIRTUAL_ENV=/opt/mesh-llm/venv`), pinned pnpm/node (`PNPM_HOME`,
-`CARGO_HOME`, `RUSTUP_HOME` baked as ENV so they resolve the same regardless
-of the container's `HOME`), and, for the `public` stage only, runs as
-**root** (`USER root`, never dropped back) rather than `runner` --
-`self-hosted` is the only stage that ends `USER runner`.
+The pinned Dockerfile recipes are maintained by the public upstream
+`Mesh-LLM/mesh-llm-runner-images` repository at
+`6c220ce1ed39d57c3fd67d60ee9554f83f0cf2e2`. **The fork does not pull runner
+images from that organization's GHCR package.** The fork publishes its own
+immutable image digests under `ghcr.io/marlucool/mesh-llm-ci-runner`, so a
+fork workflow no longer depends on upstream package visibility or permissions.
+
+`.github/workflows/build-fork-runner-images.yml` builds the CPU, web, CUDA 12,
+CUDA 13, ROCm CI/release, Vulkan, UI and browser families from those pinned
+recipes. The workflow is restricted to manual dispatch from the trusted
+repository and publishes per-image digest artifacts. A catalog update must
+use the artifact's `sha256` digest; do not replace image pins with mutable
+tags. After rebuilding an image, refresh its ref and native toolchain epoch in
+`ci/runner-images.json` and the runtime rows in `ci/slices.yml` together.
+The evidence receipts for images from the upstream package are historical and
+are not carried over to the newly published fork-owned digests.
+
+Every job that pulls a fork-owned image declares `container.credentials`
+using `${{ github.actor }}` and `${{ github.token }}`, and the job/workflow
+permissions include `packages: read`. The release preflight probes GHCR using
+the same authenticated pull-token flow; an anonymous request is not an
+accurate test of authenticated access to the fork's package. PR entrypoints use
+the fork's protected default-branch reusable CI lanes rather than invoking the
+upstream lane, which would still reference the upstream images.
 
 Reusable slices/workflows with a `container:` job, and what backs it:
 
 | Workflow | Job(s) | Image family |
 | --- | --- | --- |
-| `ci-{linux}-host-slice.yml`, `ci-linux-runtime-slice.yml`, `ci-linux-product-slice.yml`, `ci-rust-tests-slice.yml`, `ci-quality-slice.yml` (Clippy batches) | matrix-selected | `public cpu` (pre-existing, predates this containerization pass) |
-| `native-sdk-artifact.yml`, `node-sdk-addon-artifact.yml`, `static-abi-artifact.yml`, `swift-sdk-artifact.yml` | producer job | `public cpu` (pre-existing) |
-| `hf-download-smoke.yml`, `scripted-binary-smoke.yml` | their single job | `public cpu`, sha256:8d93de6b... -- unconditional, no bare-metal row |
+| `ci-{linux}-host-slice.yml`, `ci-linux-runtime-slice.yml`, `ci-linux-product-slice.yml`, `ci-rust-tests-slice.yml`, `ci-quality-slice.yml` (Clippy batches) | matrix-selected | `public cpu` / backend-specific runtime rows from the fork catalog |
+| `native-sdk-artifact.yml`, `node-sdk-addon-artifact.yml`, `static-abi-artifact.yml`, `swift-sdk-artifact.yml` | producer job | `public cpu` |
+| `hf-download-smoke.yml`, `scripted-binary-smoke.yml` | their single job | `public cpu`, unconditional; no bare-metal row |
 | `smoke.yml` | `smoke_tests` | `public cpu` when `inputs.runner != 'gpu-nvidia'`, else uncontainerized (see opt-out below) |
 | `sdk-smoke.yml` | its job | `public cpu` when `inputs.sdk_kind != 'swift'`, else uncontainerized |
-| `ci-ui-artifact-slice.yml` | `ui_artifact` | `public ui` ordinarily; existing `public web` for nonempty release tags |
-| `ci-web-slice.yml` | `ui_quality`, `ui_e2e`, `website` | `public ui`, `public browser`, existing `public web`, respectively |
+| `ci-ui-artifact-slice.yml` | `ui_artifact` | `public ui` ordinarily; `public web` for nonempty release tags |
+| `ci-web-slice.yml` | `ui_quality`, `ui_e2e`, `website` | `public ui`, `public browser`, `public web`, respectively |
 | `website-pages.yml` | `build` | `public web` |
 | `nightly-stability-run.yml` | `stability` | `public web` (bakes node/pnpm the CLI-smoke step needs) |
-| `nightly-kv-coverage.yml` | `ownership-state-machines` | `public cpu`, sha256:8d93de6b... |
-| `release.yml` (CUDA/ROCm/Vulkan compiler rows) | per-backend `public` digests | Native compiler/toolkit images remain backend-specific; amd64 CUDA preserves its intentional ARC self-hosted placement |
-| `release.yml` (Linux CUDA/ROCm/Vulkan composition rows) | `public cpu`, sha256:8d93de6b... | Verify, compose, readiness-test and archive exact producer bytes without downloading a compiler toolkit |
+| `nightly-kv-coverage.yml` | `ownership-state-machines` | `public cpu` |
+| `release.yml` (CUDA/ROCm/Vulkan compiler rows) | per-backend `public` digests | Backend-specific compiler/toolkit images; amd64 CUDA preserves its intentional ARC self-hosted placement |
+| `release.yml` (Linux CUDA/ROCm/Vulkan composition rows) | per-backend composition jobs | `public cpu`; verify, compose, readiness-test and archive producer bytes without downloading compiler toolkits |
 
 `public cpu` and `public web` are separate image builds (the latter adds
 `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright`,
