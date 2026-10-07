@@ -1,0 +1,23 @@
+name: Verify fork-owned runner image pullability
+
+on:
+  push:
+    branches:
+      - ci/use-fork-owned-runner-images
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-images:
+    name: Verify public image manifests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Verify every catalog digest is anonymously pullable
+        run: scripts/check-runner-image-pullability.sh
