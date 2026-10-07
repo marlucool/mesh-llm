@@ -5,7 +5,7 @@
       "reference": "ghcr.io/marlucool/mesh-llm-ci-runner@sha256:f01150f4ddafecb8a55b621b0bb19a6f5bdecbd0f77f021a816eafb4ec479399",
       "environment": "public",
       "backend": "cpu",
-      "native_toolchain_epoch": "mesh-llm-ci-runner-sha256-f01150f4ddafecb8a55b621b0bb19a6f5bdecbd0f77f021a816eafb4ec479399",
+      "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-f01150f4ddafecb8a55b621b0bb19a6f5bdecbd0f77f021a816eafb4ec479399",
       "receipt": null,
       "provenance": null
     },
