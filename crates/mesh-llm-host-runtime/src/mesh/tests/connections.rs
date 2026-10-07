@@ -415,6 +415,7 @@ async fn make_test_node_with_requirements(
         )),
         vram_bytes: 64 * 1024 * 1024 * 1024,
         local_runtime_capacity_bytes: 64 * 1024 * 1024 * 1024,
+        host_ram_offload_gain_bytes: 0,
         peer_change_tx,
         peer_change_rx,
         inflight_requests: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -426,6 +427,7 @@ async fn make_test_node_with_requirements(
         )),
         swarm_capture: Arc::new(std::sync::Mutex::new(None)),
         local_request_metrics: Arc::new(LocalRequestMetricsSampler::default()),
+        plugin_frame_telemetry: Arc::new(PluginFrameTelemetry::default()),
         runtime_data_producer,
         tunnel_tx,
         tunnel_http_tx,
@@ -459,10 +461,15 @@ async fn make_test_node_with_requirements(
         config_state: Arc::new(tokio::sync::Mutex::new(
             crate::runtime::config_state::ConfigState::default(),
         )),
+        peer_blocks: crate::network::peer_blocks::PeerBlocks::in_memory(),
         config_revision_tx: {
             let (tx, _rx) = tokio::sync::watch::channel(0u64);
             Arc::new(tx)
         },
+        #[cfg(feature = "payments")]
+        payments: Arc::new(tokio::sync::OnceCell::new()),
+        #[cfg(feature = "payments")]
+        payment_recovery: Arc::new(Mutex::new(None)),
         activity_policy_guard: crate::runtime::activity_policy::ActivityPolicyGuard::new(
             &mesh_llm_config::RuntimeActivityConfig::default(),
         ),

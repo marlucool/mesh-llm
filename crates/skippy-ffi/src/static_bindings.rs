@@ -2,7 +2,8 @@ use std::ffi::{c_char, c_int, c_void};
 
 use crate::{
     ActivationBoundaryDesc, ActivationDesc, BackendDevice, Error, GenerationSignalWindow,
-    IterationRequest, KvPageDesc, LlamaLogCallback, LlamaModelQuantizeParams, Model, ModelInfo,
+    IterationRequest, KvPageDesc, LayaInfoV1, LayaMemoryV1, LayaModel, LayaSequence,
+    LlamaLogCallback, LlamaModelQuantizeParams, LlamaPerfContextData, Model, ModelInfo,
     ModelTensorSourceV1, MtmdBitmap, MtmdContext, MtmdContextParams, MtmdDecoderPos,
     MtmdGenAudioInfo, MtmdHelperBitmapWrapper, MtmdHelperGenAudio, MtmdHelperGenAudioInput,
     MtmdHelperInitOpt, MtmdHelperVideo, MtmdInputChunkType, MtmdInputChunks, MtmdInputText,
@@ -160,6 +161,53 @@ unsafe extern "C" {
         out_error: *mut *mut Error,
     ) -> Status;
 
+    pub fn skippy_laya_model_open(
+        model_path: *const c_char,
+        n_threads: i32,
+        device: *const c_char,
+        out_model: *mut *mut LayaModel,
+        out_error: *mut *mut Error,
+    ) -> Status;
+
+    pub fn skippy_laya_model_free(model: *mut LayaModel);
+
+    pub fn skippy_laya_model_memory_v1(
+        model: *mut LayaModel,
+        out_info: *mut LayaMemoryV1,
+        out_error: *mut *mut Error,
+    ) -> Status;
+
+    pub fn skippy_laya_model_info_v1(
+        model: *const LayaModel,
+        out_info: *mut LayaInfoV1,
+        out_error: *mut *mut Error,
+    ) -> Status;
+
+    pub fn skippy_laya_tokenize(
+        model: *const LayaModel,
+        text: *const c_char,
+        text_len: usize,
+        out_tokens: *mut i32,
+        capacity: usize,
+        out_token_count: *mut usize,
+        out_error: *mut *mut Error,
+    ) -> Status;
+
+    pub fn skippy_laya_read(
+        model: *mut LayaModel,
+        tokens: *const i32,
+        token_count: usize,
+        marker_positions: *const i32,
+        marker_count: usize,
+        sequences: *const LayaSequence,
+        sequence_count: usize,
+        out_logits: *mut f32,
+        logits_capacity: usize,
+        out_act_logits: *mut f32,
+        act_logits_capacity: usize,
+        out_error: *mut *mut Error,
+    ) -> Status;
+
     /// Query an opened model's workload class, pooling, and full-model constraints.
     pub fn skippy_model_workload_info_v1(
         model: *const Model,
@@ -183,6 +231,7 @@ unsafe extern "C" {
     ) -> Status;
 
     pub fn skippy_session_llama_context(session: *mut Session) -> *mut Opaque;
+    pub fn llama_perf_context(ctx: *mut Opaque) -> LlamaPerfContextData;
 
     pub fn skippy_session_position(session: *const Session) -> i32;
 
@@ -222,6 +271,11 @@ unsafe extern "C" {
     ) -> Status;
 
     /// Compute one normalized token-input embedding into a caller-owned buffer.
+    ///
+    /// `out_dimensions` always receives the required embedding length before the
+    /// call can fail on capacity: when `output_capacity` is smaller it holds that
+    /// length while `Status::BufferTooSmall` is returned, so a caller can size its
+    /// buffer from the value and retry. It stays zero on every earlier failure.
     pub fn skippy_session_embed(
         session: *mut Session,
         token_ids: *const i32,
@@ -541,6 +595,14 @@ unsafe extern "C" {
         desc: *const KvPageDesc,
         input: *const c_void,
         input_bytes: usize,
+        out_error: *mut *mut Error,
+    ) -> Status;
+
+    pub fn skippy_import_cachegen_kv_page_v1(
+        session: *mut Session,
+        desc: *const KvPageDesc,
+        records: *const crate::CacheGenRecordV1,
+        record_count: usize,
         out_error: *mut *mut Error,
     ) -> Status;
 
@@ -889,5 +951,18 @@ unsafe extern "C" {
         n_batch: i32,
         logits_last: bool,
         new_n_past: *mut i32,
+    ) -> c_int;
+
+    pub fn mtmd_helper_eval_chunk_single_with_callback(
+        ctx: *mut MtmdContext,
+        lctx: *mut Opaque,
+        chunk: *const Opaque,
+        n_past: i32,
+        seq_id: i32,
+        n_batch: i32,
+        logits_last: bool,
+        new_n_past: *mut i32,
+        callback: Option<unsafe extern "C" fn(i32, *mut c_void) -> c_int>,
+        user_data: *mut c_void,
     ) -> c_int;
 }

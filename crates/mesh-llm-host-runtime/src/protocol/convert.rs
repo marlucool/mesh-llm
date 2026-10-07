@@ -365,6 +365,7 @@ fn local_workload_class_to_proto(workload: crate::mesh::ModelWorkloadClass) -> i
         Local::Rerank => Proto::Rerank as i32,
         Local::EncoderDecoder => Proto::EncoderDecoder as i32,
         Local::SpeechSynthesis => Proto::SpeechSynthesis as i32,
+        Local::Decision => Proto::Decision as i32,
         // Preserve explicit denial when relaying metadata. Zero is the legacy
         // unspecified value and must not erase an unknown workload.
         Local::Unknown => -1,
@@ -382,6 +383,7 @@ fn proto_workload_class_to_local(value: i32) -> Option<crate::mesh::ModelWorkloa
         Ok(Proto::Rerank) => Some(Local::Rerank),
         Ok(Proto::EncoderDecoder) => Some(Local::EncoderDecoder),
         Ok(Proto::SpeechSynthesis) => Some(Local::SpeechSynthesis),
+        Ok(Proto::Decision) => Some(Local::Decision),
         Ok(Proto::Unspecified) => None,
         Err(_) => Some(Local::Unknown),
     }
@@ -798,6 +800,7 @@ pub(crate) fn local_ann_to_proto_ann(
                 moe: descriptor.capabilities.moe,
                 multimodal: descriptor.capabilities.multimodal,
                 audio: local_capability_level_to_proto(descriptor.capabilities.audio),
+                system_one: local_capability_level_to_proto(descriptor.capabilities.system_one),
             }),
             topology: descriptor.topology.as_ref().map(|topology| {
                 crate::proto::node::ModelTopology {
@@ -906,6 +909,16 @@ pub(crate) fn local_ann_to_proto_ann(
             ann.local_gguf_content_id_supported,
         ),
         inference_admission_state: ann.inference_admission_state.map(|state| state as i32),
+        lightning_offers: {
+            #[cfg(feature = "payments")]
+            {
+                super::payment_offers::encode(&ann.lightning_offers)
+            }
+            #[cfg(not(feature = "payments"))]
+            {
+                Vec::new()
+            }
+        },
         cache_affinity: ann
             .cache_affinity
             .as_ref()
@@ -1166,6 +1179,8 @@ pub(crate) fn proto_ann_to_local(
         inference_admission_state: pa
             .inference_admission_state
             .and_then(|v| crate::proto::node::InferenceAdmissionState::try_from(v).ok()),
+        #[cfg(feature = "payments")]
+        lightning_offers: super::payment_offers::decode(&pa.lightning_offers)?,
         cache_affinity: pa
             .cache_affinity
             .as_ref()
@@ -1338,6 +1353,8 @@ fn legacy_proto_config_to_mesh(
             name: p.name.clone(),
             enabled: p.enabled,
             web_ui_enabled: None,
+            web_ui_primary_tab: None,
+            allow_peer_blocks: None,
             command: p.command.clone(),
             args: p.args.clone(),
             url: None,
@@ -1354,6 +1371,7 @@ fn legacy_proto_config_to_mesh(
     let mut config = MeshConfig {
         version: Some(snapshot.version),
         gpu: GpuConfig {
+            host_ram_offload: None,
             assignment,
             parallel: None,
         },
@@ -1366,6 +1384,7 @@ fn legacy_proto_config_to_mesh(
         models,
         plugins,
         logging: Default::default(),
+        payments: Default::default(),
         extra: Default::default(),
     };
     if let Some(mode) = snapshot
@@ -1424,6 +1443,7 @@ mod tests {
             crate::mesh::ModelWorkloadClass::Rerank,
             crate::mesh::ModelWorkloadClass::EncoderDecoder,
             crate::mesh::ModelWorkloadClass::SpeechSynthesis,
+            crate::mesh::ModelWorkloadClass::Decision,
             crate::mesh::ModelWorkloadClass::Unknown,
         ] {
             let local = crate::mesh::ServedModelMetadata {

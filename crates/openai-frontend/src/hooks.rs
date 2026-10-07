@@ -448,6 +448,10 @@ impl HookedOpenAiBackend {
 
 #[async_trait]
 impl OpenAiBackend for HookedOpenAiBackend {
+    async fn count_chat_tokens(&self, request: ChatCompletionRequest) -> OpenAiResult<u32> {
+        self.backend.count_chat_tokens(request).await
+    }
+
     async fn models(&self) -> OpenAiResult<Vec<ModelObject>> {
         self.backend.models().await
     }
@@ -554,6 +558,7 @@ impl OpenAiBackend for HookedOpenAiBackend {
         context: OpenAiRequestContext,
     ) -> OpenAiResult<ChatCompletionStream> {
         let exchange_id = uuid::Uuid::new_v4().to_string();
+        context.publish_exchange_id(exchange_id.clone());
         // Same admission-time arming as `chat_completion_with_context` above
         // — see its comment. A future dropped while `before_chat_completion`
         // is still running still gets exactly one terminal callback.

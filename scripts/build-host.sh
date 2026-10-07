@@ -120,11 +120,14 @@ fi
 
 stamp_build_version
 
+# `payments` is the ledger + `wallet.v1` plugin adapter and links no wallet SDK.
+# Wallets are external `wallet.v1` plugins (e.g. `lexe-wallet`).
+host_features="web-ui,dynamic-native-runtime,payments"
 cargo_args=(build --locked -p mesh-llm --bin mesh-llm --no-default-features \
-    --features "web-ui,dynamic-native-runtime")
+    --features "$host_features")
 if [[ "$BUILD_PROFILE" == "release" ]]; then
     cargo_args=(build --release --locked -p mesh-llm --bin mesh-llm --no-default-features \
-        --features "web-ui,dynamic-native-runtime")
+        --features "$host_features")
 fi
 (cd "$REPO_ROOT" && cargo "${cargo_args[@]}")
 

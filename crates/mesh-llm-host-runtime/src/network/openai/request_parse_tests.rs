@@ -93,8 +93,8 @@ async fn parse_failures_expose_lifecycle_context_only_after_complete_headers() {
     let address = listener.local_addr().unwrap();
     let request_id = RequestId::new();
     let server = tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        read_http_request_with_plugin_manager_with_context(&mut stream, None)
+        let (stream, _) = listener.accept().await.unwrap();
+        read_http_request_with_plugin_manager_with_context(&mut stream.into(), None)
             .await
             .unwrap_err()
     });
@@ -112,8 +112,8 @@ async fn parse_failures_expose_lifecycle_context_only_after_complete_headers() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let server = tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        read_http_request_with_plugin_manager_with_context(&mut stream, None)
+        let (stream, _) = listener.accept().await.unwrap();
+        read_http_request_with_plugin_manager_with_context(&mut stream.into(), None)
             .await
             .unwrap_err()
     });
@@ -403,6 +403,26 @@ async fn large_tokenize_request_routes_by_expected_identity_without_parsing_chat
         .expect("forwarded headers should terminate")
         + 4;
     assert_eq!(&request.raw[forwarded_body_start..], body.as_slice());
+}
+
+// The paid path resolves the backend by this mapping: a catalog/HF-ref model
+// is priced under its public ID but registered under an internal one.
+#[test]
+fn public_catalog_ref_resolves_to_internal_served_name() {
+    let internal = "local-gguf/sha256-abc".to_owned();
+    let descriptors = vec![catalog_model_ref_descriptor(&internal)];
+    assert_eq!(
+        internal_model_for_public_id(
+            "tiiuae/Falcon-H1-1.5B-Instruct-GGUF:Q4_K_M",
+            std::slice::from_ref(&internal),
+            &descriptors
+        ),
+        Some(internal.clone())
+    );
+    assert_eq!(
+        internal_model_for_public_id("other/model:Q4_K_M", &[internal], &descriptors),
+        None
+    );
 }
 
 #[tokio::test]

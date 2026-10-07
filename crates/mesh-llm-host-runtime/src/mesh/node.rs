@@ -6,14 +6,14 @@ use std::net::SocketAddr;
 mod routing_telemetry;
 mod startup;
 
-pub use startup::detect_vram_bytes_capped;
+pub use startup::detect_local_fit_bytes;
 #[cfg(test)]
 pub(crate) use startup::hardware_snapshot_for_start;
 use startup::{
     advertised_hardware_for_start, bind_mesh_endpoint, init_owner_runtime, startup_secret_key,
     wait_for_endpoint_online,
 };
-pub(crate) use startup::{default_plugin_event_source, startup_transport_config};
+pub(crate) use startup::{stamp_plugin_event_source, startup_transport_config};
 
 /// Upper bound on how long shutdown waits for one iroh endpoint to close.
 ///
@@ -114,6 +114,8 @@ pub struct Node {
     pub(crate) vram_bytes: u64,
     /// Local fit budget, which may additionally include CPU offload memory.
     pub(crate) local_runtime_capacity_bytes: u64,
+    /// What `gpu.host_ram_offload = true` would add to the local fit budget.
+    pub(crate) host_ram_offload_gain_bytes: u64,
     pub(crate) peer_change_tx: watch::Sender<usize>,
     pub peer_change_rx: watch::Receiver<usize>,
     pub(crate) inflight_requests: Arc<std::sync::atomic::AtomicUsize>,
@@ -125,6 +127,10 @@ pub struct Node {
         Arc<std::sync::Mutex<mesh_llm_routing::cache_inventory::CacheInventory>>,
     pub(crate) swarm_capture: Arc<std::sync::Mutex<Option<crate::capture::SwarmCaptureRecorder>>>,
     pub(crate) local_request_metrics: Arc<LocalRequestMetricsSampler>,
+    /// Local-only plugin-frame telemetry: the source-mismatch counter and the
+    /// per-peer warning throttle. It shares no lock with `state`, so a
+    /// plugin-frame decision never contends with the mesh-wide state mutex.
+    pub(crate) plugin_frame_telemetry: Arc<PluginFrameTelemetry>,
     pub(crate) runtime_data_producer: crate::runtime_data::RuntimeDataProducer,
     pub(crate) tunnel_tx:
         tokio::sync::mpsc::Sender<(iroh::endpoint::SendStream, iroh::endpoint::RecvStream)>,
@@ -171,7 +177,14 @@ pub struct Node {
     pub gpu_compute_tflops_fp32: Arc<tokio::sync::Mutex<Option<Vec<f64>>>>,
     pub gpu_compute_tflops_fp16: Arc<tokio::sync::Mutex<Option<Vec<f64>>>>,
     pub(crate) config_state: Arc<tokio::sync::Mutex<crate::runtime::config_state::ConfigState>>,
+    /// Peers this node's operator chose to stop routing to (local only).
+    pub(crate) peer_blocks: crate::network::peer_blocks::PeerBlocks,
     pub(crate) config_revision_tx: Arc<tokio::sync::watch::Sender<u64>>,
+    #[cfg(feature = "payments")]
+    pub(crate) payments: crate::network::payments::PaymentsSlot,
+    /// Stops the payment-recovery loop, which holds a `Node` clone.
+    #[cfg(feature = "payments")]
+    pub(crate) payment_recovery: crate::network::payments::PaymentRecoverySlot,
     /// Shared activity policy guard for ingress admission checks.
     pub(crate) activity_policy_guard: crate::runtime::activity_policy::ActivityPolicyGuard,
     /// Whether activity admission details are being advertised onto a public mesh.
@@ -641,6 +654,8 @@ impl Node {
             close_endpoint_gracefully(&lifecycle.endpoint, "owner-control").await;
         }
         self.shutdown_stage_control().await;
+        #[cfg(feature = "payments")]
+        self.shutdown_payment_recovery().await;
     }
 
     async fn shutdown_stage_control(&self) {
@@ -837,6 +852,7 @@ impl Node {
             )),
             vram_bytes: hardware.vram_bytes,
             local_runtime_capacity_bytes: hardware.local_runtime_capacity_bytes,
+            host_ram_offload_gain_bytes: hardware.host_ram_offload_gain_bytes,
             peer_change_tx,
             peer_change_rx,
             inflight_requests: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -848,6 +864,7 @@ impl Node {
             )),
             swarm_capture: Arc::new(std::sync::Mutex::new(None)),
             local_request_metrics: Arc::new(LocalRequestMetricsSampler::default()),
+            plugin_frame_telemetry: Arc::new(PluginFrameTelemetry::default()),
             runtime_data_producer,
             tunnel_tx,
             tunnel_http_tx,
@@ -879,10 +896,15 @@ impl Node {
             gpu_compute_tflops_fp32: Arc::new(tokio::sync::Mutex::new(None)),
             gpu_compute_tflops_fp16: Arc::new(tokio::sync::Mutex::new(None)),
             config_state: Arc::new(tokio::sync::Mutex::new(config_state_init)),
+            peer_blocks: crate::network::peer_blocks::PeerBlocks::for_this_node(),
             config_revision_tx: {
                 let (tx, _rx) = tokio::sync::watch::channel(config_revision_init);
                 Arc::new(tx)
             },
+            #[cfg(feature = "payments")]
+            payments: Arc::new(tokio::sync::OnceCell::new()),
+            #[cfg(feature = "payments")]
+            payment_recovery: Arc::new(Mutex::new(None)),
             activity_policy_guard: crate::runtime::activity_policy::ActivityPolicyGuard::new(
                 &activity_policy_config,
             ),
@@ -906,10 +928,7 @@ impl Node {
 
         // Accept loop starts but waits for start_accepting() before processing connections.
         // This lets a node exist before it is ready to accept mesh traffic.
-        let node2 = node.clone();
-        tokio::spawn(async move {
-            node2.accept_loop().await;
-        });
+        node.spawn_accept_loop();
 
         Ok((
             node,
@@ -919,6 +938,13 @@ impl Node {
                 stage: stage_transport_rx,
             },
         ))
+    }
+
+    fn spawn_accept_loop(&self) {
+        let node = self.clone();
+        tokio::spawn(async move {
+            node.accept_loop().await;
+        });
     }
 
     #[cfg(test)]
@@ -1008,6 +1034,7 @@ impl Node {
             )),
             vram_bytes: 0,
             local_runtime_capacity_bytes: 0,
+            host_ram_offload_gain_bytes: 0,
             advertised_memory: AdvertisedMemory::default(),
             peer_change_tx,
             peer_change_rx,
@@ -1020,6 +1047,7 @@ impl Node {
             )),
             swarm_capture: Arc::new(std::sync::Mutex::new(None)),
             local_request_metrics: Arc::new(LocalRequestMetricsSampler::default()),
+            plugin_frame_telemetry: Arc::new(PluginFrameTelemetry::default()),
             runtime_data_producer,
             tunnel_tx,
             tunnel_http_tx,
@@ -1052,10 +1080,15 @@ impl Node {
             config_state: Arc::new(tokio::sync::Mutex::new(
                 crate::runtime::config_state::ConfigState::default(),
             )),
+            peer_blocks: crate::network::peer_blocks::PeerBlocks::in_memory(),
             config_revision_tx: {
                 let (tx, _rx) = tokio::sync::watch::channel(0);
                 Arc::new(tx)
             },
+            #[cfg(feature = "payments")]
+            payments: Arc::new(tokio::sync::OnceCell::new()),
+            #[cfg(feature = "payments")]
+            payment_recovery: Arc::new(Mutex::new(None)),
             activity_policy_guard: crate::runtime::activity_policy::ActivityPolicyGuard::new(
                 &mesh_llm_config::RuntimeActivityConfig::default(),
             ),
@@ -1179,17 +1212,39 @@ impl Node {
         }
     }
 
+    /// Insert a peer that models a *healthy* admitted peer: it is marked as
+    /// showing signs of life so the issue #1756 routing gate admits it. Use
+    /// [`Node::insert_test_peer_without_liveness`] to model a departed or
+    /// unreachable peer instead.
     #[cfg(test)]
     pub async fn insert_test_peer(&self, peer: PeerInfo) {
-        self.state.lock().await.peers.insert(peer.id, peer);
+        let id = peer.id;
+        let mut state = self.state.lock().await;
+        state.test_peer_liveness.insert(id);
+        state.peers.insert(id, peer);
+    }
+
+    /// Insert a peer with no connection and no observed RTT — the shape of a
+    /// departed peer still carried by a stale bridge announcement. It stays
+    /// `admitted` so the test isolates the issue #1756 liveness gate rather
+    /// than the admission gate.
+    #[cfg(test)]
+    pub async fn insert_test_peer_without_liveness(&self, peer: PeerInfo) {
+        let id = peer.id;
+        let mut state = self.state.lock().await;
+        state.test_peer_liveness.remove(&id);
+        state.peers.insert(id, peer);
     }
 
     /// Drop a peer from the local mesh view, simulating churn.
     #[cfg(test)]
     pub async fn remove_test_peer(&self, id: EndpointId) {
-        self.state.lock().await.peers.remove(&id);
+        let mut state = self.state.lock().await;
+        state.test_peer_liveness.remove(&id);
+        state.peers.remove(&id);
     }
 }
+
 impl Node {
     pub fn id(&self) -> EndpointId {
         self.endpoint.id()
@@ -1572,6 +1627,14 @@ impl Node {
     /// Set the operator-facing display name for this node.
     pub async fn set_display_name(&self, name: String) {
         *self.display_name.lock().await = Some(name);
+    }
+
+    /// Removes the plugin manager from this node. The in-process payments
+    /// runner holds a `Node` clone, so a manager left installed forms a
+    /// Node -> manager -> runner -> Node cycle that keeps the payments engine
+    /// (and its `service.lock`) alive after an embedded stop.
+    pub async fn take_plugin_manager(&self) -> Option<crate::plugin::PluginManager> {
+        self.plugin_manager.lock().await.take()
     }
 
     pub async fn set_plugin_manager(&self, plugin_manager: crate::plugin::PluginManager) {

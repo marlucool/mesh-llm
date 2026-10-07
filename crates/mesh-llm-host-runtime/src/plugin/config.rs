@@ -3,7 +3,10 @@ use super::installed::{
     configured_disabled_installed_plugin_summary, configured_external_plugin_spec,
 };
 use super::schema_validation::strict_plugin_schema_availability;
-use super::{BLOBSTORE_PLUGIN_ID, PluginStartupOptions, PluginSummary};
+use super::{
+    BLOBSTORE_PLUGIN_ID, PAYMENTS_PLUGIN_ID, PluginStartupOptions, PluginSummary,
+    RETIRED_WALLET_LEXE_PLUGIN_ID,
+};
 use crate::{
     MeshRequirementRejectReason, MeshRequirements, NodeVersionBounds, ProtocolGenerationBounds,
     ReleaseAttestationRequirement,
@@ -277,6 +280,7 @@ pub struct ExternalPluginSpec {
     pub env: BTreeMap<String, String>,
     pub startup: PluginStartupOptions,
     pub web_ui_enabled: Option<bool>,
+    pub web_ui_primary_tab: Option<bool>,
     pub installed_metadata: Option<mesh_llm_plugin_manager::InstalledPluginMetadata>,
 }
 
@@ -290,23 +294,38 @@ pub fn resolve_plugins(config: &MeshConfig, _host_mode: PluginHostMode) -> Resul
     let mut inactive = Vec::new();
     let mut names = BTreeMap::<String, ()>::new();
     let mut blobstore_enabled = true;
+    let mut payments_enabled = true;
     for entry in &config.plugins {
         if names.insert(entry.name.clone(), ()).is_some() {
             bail!("Duplicate plugin entry '{}'", entry.name);
         }
         let enabled = entry.enabled.unwrap_or(true);
         if entry.name == BLOBSTORE_PLUGIN_ID {
-            if entry.command.is_some()
-                || !entry.args.is_empty()
-                || entry.url.is_some()
-                || !entry.startup.is_default()
-            {
-                bail!(
-                    "Plugin '{}' is served by mesh-llm itself; only `enabled` may be set",
-                    BLOBSTORE_PLUGIN_ID
-                );
-            }
+            ensure_builtin_entry_only_toggles_enabled(entry)?;
             blobstore_enabled = enabled;
+            continue;
+        }
+        if entry.name == RETIRED_WALLET_LEXE_PLUGIN_ID {
+            // The built-in Lexe wallet was removed; keep old configs loading.
+            // An output event, not `tracing::warn!`: the runtime's default
+            // log filter drops host-runtime warnings, so users never saw it.
+            // Plugins are resolved more than once at startup; warn once.
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+                let _ = mesh_llm_events::emit_event(mesh_llm_events::OutputEvent::Warning {
+                    message: format!(
+                        "Ignoring [[plugin]] '{RETIRED_WALLET_LEXE_PLUGIN_ID}': the built-in \
+                         Lexe wallet was removed; install the external `lexe-wallet` plugin \
+                         instead"
+                    ),
+                    context: None,
+                });
+            });
+            continue;
+        }
+        if entry.name == PAYMENTS_PLUGIN_ID {
+            ensure_builtin_entry_only_toggles_enabled(entry)?;
+            payments_enabled = enabled;
             continue;
         }
         if !enabled {
@@ -324,7 +343,10 @@ pub fn resolve_plugins(config: &MeshConfig, _host_mode: PluginHostMode) -> Resul
     append_installed_plugins(&mut externals, &mut inactive, &mut names);
 
     if blobstore_enabled {
-        externals.push(blobstore_plugin_spec()?);
+        externals.push(builtin_plugin_spec(BLOBSTORE_PLUGIN_ID, &[])?);
+    }
+    if payments_enabled && payments_compiled_in() {
+        externals.push(in_process_builtin_spec(PAYMENTS_PLUGIN_ID));
     }
 
     Ok(ResolvedPlugins {
@@ -333,20 +355,48 @@ pub fn resolve_plugins(config: &MeshConfig, _host_mode: PluginHostMode) -> Resul
     })
 }
 
-pub fn blobstore_plugin_spec() -> Result<ExternalPluginSpec> {
-    let command = std::env::current_exe()
-        .context("Cannot determine mesh-llm executable path")?
-        .display()
-        .to_string();
-    Ok(ExternalPluginSpec {
-        name: BLOBSTORE_PLUGIN_ID.to_string(),
-        command,
-        args: vec![
-            "--log-format".into(),
-            "json".into(),
-            "--plugin".into(),
-            BLOBSTORE_PLUGIN_ID.into(),
-        ],
+/// Built-in plugins are served by this executable; the only thing an operator
+/// may change about them is whether they run.
+fn ensure_builtin_entry_only_toggles_enabled(entry: &PluginConfigEntry) -> Result<()> {
+    if entry.command.is_some()
+        || !entry.args.is_empty()
+        || entry.url.is_some()
+        || !entry.startup.is_default()
+    {
+        bail!(
+            "Plugin '{}' is served by mesh-llm itself; only `enabled` may be set",
+            entry.name
+        );
+    }
+    Ok(())
+}
+
+/// Whether this build carries the payments engine. Forced per thread under
+/// test and defaults to "absent", so the many resolver tests that count plugins
+/// are independent of the cargo features the test binary was built with.
+#[cfg(not(test))]
+fn payments_compiled_in() -> bool {
+    cfg!(feature = "payments")
+}
+
+#[cfg(test)]
+fn payments_compiled_in() -> bool {
+    TEST_PAYMENTS_COMPILED_IN.with(|slot| slot.borrow().unwrap_or(false))
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(super) static TEST_PAYMENTS_COMPILED_IN: std::cell::RefCell<Option<bool>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Spec for a builtin served as a task in this process: no command, so the
+/// plugin manager starts it from the runner supplied for its name.
+pub fn in_process_builtin_spec(name: &str) -> ExternalPluginSpec {
+    ExternalPluginSpec {
+        name: name.to_string(),
+        command: String::new(),
+        args: Vec::new(),
         url: None,
         env: BTreeMap::new(),
         startup: PluginStartupOptions {
@@ -354,6 +404,40 @@ pub fn blobstore_plugin_spec() -> Result<ExternalPluginSpec> {
             ..PluginStartupOptions::default()
         },
         web_ui_enabled: None,
+        web_ui_primary_tab: None,
+        installed_metadata: None,
+    }
+}
+
+/// Launch spec for a plugin served by this executable: the host re-executes
+/// itself with `--plugin <name>`, passing each of `plugin_args` as a
+/// `--plugin-arg=<arg>`. Built-ins are optional so a failure to start one
+/// degrades that capability instead of blocking node startup.
+pub fn builtin_plugin_spec(name: &str, plugin_args: &[String]) -> Result<ExternalPluginSpec> {
+    let command = std::env::current_exe()
+        .context("Cannot determine mesh-llm executable path")?
+        .display()
+        .to_string();
+    let mut args: Vec<String> = vec![
+        "--log-format".into(),
+        "json".into(),
+        "--plugin".into(),
+        name.into(),
+    ];
+    // `=` keeps an argument that starts with `-` bound to its flag.
+    args.extend(plugin_args.iter().map(|arg| format!("--plugin-arg={arg}")));
+    Ok(ExternalPluginSpec {
+        name: name.to_string(),
+        command,
+        args,
+        url: None,
+        env: BTreeMap::new(),
+        startup: PluginStartupOptions {
+            optional: true,
+            ..PluginStartupOptions::default()
+        },
+        web_ui_enabled: None,
+        web_ui_primary_tab: None,
         installed_metadata: None,
     })
 }
