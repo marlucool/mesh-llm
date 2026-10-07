@@ -748,7 +748,7 @@ jobs:
     if: ${{ needs.metadata.outputs.skip_gpu_bundles != 'true' }}
     runs-on: ${{ needs.metadata.outputs.runner_16 }}
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:bdb1401d67d83f6ff38eaa1ba02b566afd826dfd5722cf9a461b252121e94e52
+      image: ghcr.io/marlucool/mesh-llm-ci-runner@sha256:eda3a60edcaeee9b36764b164e499806f7198db0a491acc87fae21499ae1c238
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -770,7 +770,7 @@ jobs:
         id: native_toolchain
         uses: ./.github/actions/resolve-native-toolchain-epoch
         with:
-          pinned_epoch: mesh-llm-cuda-runner-sha256-0e13e5d2d2c121df265ff6c69be81e468989e09f81d6b7ff049b110cc0bb0d2b
+          pinned_epoch: mesh-llm-ci-runner-sha256-eda3a60edcaeee9b36764b164e499806f7198db0a491acc87fae21499ae1c238
       - uses: ./.github/actions/configure-sccache-gha
         with:
           allow_depot_remote_cache: ${{ needs.metadata.outputs.allow_depot_remote_cache }}
