@@ -76,7 +76,9 @@ with open(sys.argv[1], encoding="utf-8") as handle:
         print(image["reference"].strip())
 PY
 )
-refs+=("${extra_refs[@]-}")
+if ((${#extra_refs[@]} > 0)); then
+  refs+=("${extra_refs[@]}")
+fi
 
 if [[ ${#refs[@]} -eq 0 ]]; then
   echo "no image references found in ${json_path}" >&2
@@ -93,11 +95,10 @@ done
 if [[ "$failing" -ne 0 ]]; then
   cat >&2 <<'EOF'
 
-NOT anonymously pullable: at least one pinned runner image is unavailable to
-this repository's CI. Container jobs pinning these references will fail at
-"Initialize containers". Either the image must be published under this
-account/organization with access inherited from this repository, or the jobs
-must not depend on the upstream Mesh-LLM package.
+NOT anonymously pullable: at least one pinned runner image is private, missing,
+or points at an unavailable digest. Container jobs pinning these references
+will fail at "Initialize containers". Publish each required image with public
+pull access, then update the catalog to its immutable digest.
 EOF
 fi
 exit "$failing"
