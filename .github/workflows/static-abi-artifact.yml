@@ -140,6 +140,9 @@ jobs:
       toolchain_epoch: ${{ steps.native_toolchain.outputs.epoch }}
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:0d4e98e62d9e06419e87e1b1d10020a2eb2b0584086aa983795e1c5f2d933dd7
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     defaults:
       run:
         shell: bash
