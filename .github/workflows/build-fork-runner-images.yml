@@ -17,7 +17,7 @@ env:
 
 jobs:
   build:
-    if: github.repository == 'marlucool/mesh-llm'
+    if: github.repository == 'marlucool/mesh-llm' && github.ref == 'refs/heads/main'
     name: Build ${{ matrix.image_id }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
