@@ -165,6 +165,31 @@ jobs:
           provenance: false
           sbom: false
 
+      - name: Verify published digest is anonymously pullable
+        shell: bash
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          repository="${IMAGE#ghcr.io/}"
+          token_json="$(curl --fail --silent --show-error --get \
+            --data-urlencode "scope=repository:${repository}:pull" \
+            --data-urlencode "service=ghcr.io" \
+            https://ghcr.io/token)"
+          token="$(jq -er '.token // .access_token // empty' <<<"$token_json")"
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/manifest.json" \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer $token" \
+            --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/${repository}/manifests/${IMAGE_DIGEST}")"
+          if [[ "$status" != 200 ]]; then
+            echo "Published image is not anonymously pullable: ${IMAGE}@${IMAGE_DIGEST} (HTTP $status)" >&2
+            cat "$RUNNER_TEMP/manifest.json" >&2
+            exit 1
+          fi
+          echo "Anonymous GHCR manifest request succeeded for ${IMAGE}@${IMAGE_DIGEST}"
+
       - name: Record image digest
         shell: bash
         env:
@@ -183,9 +208,9 @@ jobs:
           {
             echo "## $IMAGE_ID"
             echo
-            echo "`$IMAGE@$IMAGE_DIGEST`"
+            printf '`%s@%s`\n' "$IMAGE" "$IMAGE_DIGEST"
             echo
-            echo "Temporary bootstrap tag: `$IMAGE_TAG`"
+            printf 'Temporary bootstrap tag: `%s`\n' "$IMAGE_TAG"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload digest receipt
