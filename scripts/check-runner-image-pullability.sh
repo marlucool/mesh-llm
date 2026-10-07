@@ -1,24 +1,17 @@
 #!/usr/bin/env bash
-# Check whether the pinned runner images are pullable by THIS repository's
-# CI (the fork's GITHUB_TOKEN), by probing GHCR with an anonymous pull token.
+# Check whether every digest in the runner-image catalog is anonymously
+# pullable. GitHub Actions container: images are fetched before job steps run,
+# so private or nonexistent GHCR digests fail at "Initialize containers".
 #
-# The upstream Mesh-LLM runner images live at
-#   ghcr.io/mesh-llm/mesh-llm-cuda-runner
-# If that GHCR package is private to the Mesh-LLM organization (the observed
-# state: every pinned digest returns 403 to an anonymous pull-token request),
-# then a fork's `container: image:` jobs fail at "Initialize containers" with
-# `docker: Error response from daemon: Head "...": unauthorized: authentication
-# required` no matter which upstream digest is pinned, because the fork's
-# GITHUB_TOKEN has no access to another organization's private packages.
+# The fork's replacement runner images live at
+#   ghcr.io/marlucool/mesh-llm-ci-runner
+# This script probes each reference without credentials:
+#   1. Request an anonymous GHCR pull token for the image repository.
+#   2. Request the exact manifest or index digest using that token.
+# HTTP 200 means the manifest is public and exists; other statuses fail closed.
 #
-# This script probes each reference the way an unauthenticated pull would:
-#   1. GET https://ghcr.io/token?scope=repository:<owner>/<name>:pull
-#   2. GET https://ghcr.io/v2/<owner>/<name>/manifests/<ref> with that token
-# 200 => publicly pullable (fork CI can use it without credentials).
-# 401/403/404 => NOT pullable by the fork; container init will fail.
-#
-# GHCR answers 403 for both private and nonexistent repositories, so a 403
-# means "unusable from this fork", which is the only fact the CI needs.
+# Keep this check in CI after changing image references; do not infer pullability
+# from a successful authenticated build/push.
 #
 # Usage:
 #   scripts/check-runner-image-pullability.sh [--json PATH] [REF ...]
