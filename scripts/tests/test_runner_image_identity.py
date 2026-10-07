@@ -65,14 +65,10 @@ class RunnerImageIdentityTests(unittest.TestCase):
         })
         self.assertEqual(before, {path: path.read_bytes() for path in paths})
 
-    def test_only_qualified_ui_images_have_receipts(self) -> None:
-        for image_id, image in self.catalog["images"].items():
-            if image_id in ("public-ui", "public-browser"):
-                self.assertIsNotNone(image["receipt"])
-                self.assertIsNotNone(image["provenance"])
-            else:
-                self.assertIsNone(image["receipt"])
-                self.assertIsNone(image["provenance"])
+    def test_new_fork_images_make_no_unearned_provenance_claim(self) -> None:
+        for image in self.catalog["images"].values():
+            self.assertIsNone(image["receipt"])
+            self.assertIsNone(image["provenance"])
             self.assertNotIn("tools", image)
         self.assertIsNone(self.catalog["compiler_seed"]["workload_coverage"])
         result = self.cli("lookup", "release-ui-artifact", "--field", "receipt")
@@ -103,11 +99,15 @@ class RunnerImageIdentityTests(unittest.TestCase):
         self.assert_drift("duplicate consumer binding")
 
     def test_catalog_rejects_unverified_receipt_claim(self) -> None:
-        self.catalog["images"]["public-ui"]["receipt"]["index_candidate_key"] = "invented"
+        image = self.catalog["images"]["public-cpu"]
+        image["receipt"] = {"schema": 1}
+        image["provenance"] = {}
         self.assert_drift("invalid fields")
 
     def test_catalog_rejects_missing_provenance(self) -> None:
-        self.catalog["images"]["public-ui"]["provenance"] = None
+        image = self.catalog["images"]["public-ui"]
+        image["receipt"] = {"schema": 1}
+        image["provenance"] = None
         self.assert_drift("receipt/provenance must be paired")
 
     def test_catalog_rejects_workflow_path_escape(self) -> None:
