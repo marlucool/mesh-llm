@@ -1,6 +1,9 @@
 name: Build fork-owned CI runner images
 
 on:
+  push:
+    branches:
+      - ci/use-fork-owned-runner-images
   workflow_dispatch:
 
 permissions:
