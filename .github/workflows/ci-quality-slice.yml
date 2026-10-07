@@ -179,7 +179,7 @@ jobs:
       - name: Install CI Python requirements
         run: python3 -m pip install --disable-pip-version-check --no-input -r ci/requirements-ci-python.txt
       - uses: ./.github/actions/install-actionlint
-      - uses: taiki-e/install-action@3d23c1bbdafe696dfccad2664945a04f47d03dc3 # just
+      - uses: taiki-e/install-action@844d13d3ed6991e61a4ebc2c067073e3ed4f5ee1 # just
       - name: Validate GitHub Actions
         run: actionlint -config-file .github/actionlint.yaml
       - name: Test CI, packaging, and SDK contracts
@@ -242,7 +242,7 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
-      - uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2
         with:
           tool: cargo-machete@0.9.2
       - name: Flag unused dependencies
@@ -340,7 +340,7 @@ jobs:
         with:
           allow_depot_remote_cache: ${{ needs.runner_policy.outputs.allow_depot_remote_cache }}
           allow_native_github_cache: ${{ needs.runner_policy.outputs.allow_native_github_cache }}
-      - uses: taiki-e/install-action@3d23c1bbdafe696dfccad2664945a04f47d03dc3 # just
+      - uses: taiki-e/install-action@844d13d3ed6991e61a4ebc2c067073e3ed4f5ee1 # just
       - name: Install website dependencies
         working-directory: website
         run: npm ci
