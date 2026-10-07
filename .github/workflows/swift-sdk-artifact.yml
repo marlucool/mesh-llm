@@ -369,7 +369,7 @@ jobs:
 
       - name: Download immutable Swift targets
         if: ${{ inputs.mode == 'full' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           # A failed-jobs rerun keeps successful target artifacts from earlier
           # attempts in this run. Download every attempt so both assembly-only
