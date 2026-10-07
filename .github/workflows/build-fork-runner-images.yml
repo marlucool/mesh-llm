@@ -31,18 +31,24 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - image_id: public-ui
-            dockerfile: Dockerfile.ui
-            backend: ui
+          - image_id: public-rocm-ci
+            dockerfile: Dockerfile
+            backend: rocm
+            cuda_series: none
+            rocm_version: 7.0
+            platforms: linux/amd64
+          - image_id: public-rocm-release
+            dockerfile: Dockerfile
+            backend: rocm
+            cuda_series: none
+            rocm_version: 7.2.3
+            platforms: linux/amd64
+          - image_id: public-vulkan
+            dockerfile: Dockerfile
+            backend: vulkan
             cuda_series: none
             rocm_version: none
-            platforms: linux/amd64
-          - image_id: public-browser
-            dockerfile: Dockerfile.ui
-            backend: browser
-            cuda_series: none
-            rocm_version: none
-            platforms: linux/amd64
+            platforms: linux/amd64,linux/arm64
     steps:
       - name: Checkout fork workflow revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
