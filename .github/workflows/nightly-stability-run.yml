@@ -73,6 +73,9 @@ jobs:
     timeout-minutes: 120
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:ff53048ee7a87b3244ccbfa1b2888fde5db31a73d0dfa42f283d25dde0115307
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     env:
       MESH_STABILITY_BASE_URL: ${{ inputs.base_url }}
       MESH_STABILITY_MODELS: ${{ inputs.models }}
