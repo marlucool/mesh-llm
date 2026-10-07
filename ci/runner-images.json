@@ -18,10 +18,10 @@
       "provenance": null
     },
     "public-cuda12": {
-      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:c5b85ef527230f77cf9933ef40bcb44316f9bbcb8fd2ce0651b58acda5143dfd",
+      "reference": "ghcr.io/marlucool/mesh-llm-ci-runner@sha256:94bc66165dad70974eaf1d8c64150b073fdc1e06660da85bdefa658ae8661256",
       "environment": "public",
       "backend": "cuda12",
-      "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-c5b85ef527230f77cf9933ef40bcb44316f9bbcb8fd2ce0651b58acda5143dfd",
+      "native_toolchain_epoch": "mesh-llm-ci-runner-sha256-94bc66165dad70974eaf1d8c64150b073fdc1e06660da85bdefa658ae8661256",
       "receipt": null,
       "provenance": null
     },
