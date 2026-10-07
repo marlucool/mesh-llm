@@ -23,6 +23,9 @@ jobs:
     timeout-minutes: 90
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:f499b79bc52dc7492d57397fdbec9f890c6f6bb1d8c1fcde9c1c97d45c0541a7
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     env:
       CARGO_INCREMENTAL: "0"
       RUST_BACKTRACE: "1"
