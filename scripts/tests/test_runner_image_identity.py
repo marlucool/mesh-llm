@@ -321,19 +321,14 @@ class RunnerImageIdentityTests(unittest.TestCase):
         self.catalog["consumer_roles"]["ui-artifact"]["bindings"][0]["job"] = "ui_quality"
         self.assert_drift("complete UI artifact pair")
 
-    def test_qualified_ui_receipts_match_retained_admission(self) -> None:
-        expected_candidates = {
-            "public-browser": "candidate-index-public-browser",
-            "public-ui": "candidate-index-public-ui",
-        }
-        for image_id, candidate_key in expected_candidates.items():
+    def test_fork_ui_images_do_not_reuse_upstream_provenance(self) -> None:
+        # The retained evidence files prove the old upstream digests only. A
+        # digest rebuilt into the fork-owned registry must not inherit those
+        # receipts or claim an admission that was never performed for it.
+        for image_id in ("public-browser", "public-ui"):
             image = self.catalog["images"][image_id]
-            self.assertEqual(image["receipt"]["index_candidate_key"], candidate_key)
-            self.assertEqual(image["provenance"]["origin"]["run_id"], 34256062098)
-            self.assertEqual(image["provenance"]["origin"]["run_attempt"], 1)
-            self.assertEqual(image["provenance"]["validation"], "offline_binding_only")
-        self.catalog["images"]["public-ui"]["receipt"]["index_candidate_key"] = "candidate-index-public-browser"
-        self.assert_drift("image/index binding mismatch")
+            self.assertIsNone(image["receipt"])
+            self.assertIsNone(image["provenance"])
 
     def test_ordinary_and_release_artifact_workloads_keep_their_image_roles(self) -> None:
         self.assertEqual(self.catalog["consumer_roles"]["ui-artifact"]["image_id"], "public-ui")
