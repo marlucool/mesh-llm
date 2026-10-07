@@ -82,7 +82,7 @@ jobs:
       matrix:
         runtime: ${{ fromJson(inputs.runtime_matrix) }}
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d
+      image: ghcr.io/marlucool/mesh-llm-ci-runner@sha256:f01150f4ddafecb8a55b621b0bb19a6f5bdecbd0f77f021a816eafb4ec479399
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
