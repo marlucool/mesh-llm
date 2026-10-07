@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container:
-      image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:ff53048ee7a87b3244ccbfa1b2888fde5db31a73d0dfa42f283d25dde0115307
+      image: ghcr.io/marlucool/mesh-llm-ci-runner@sha256:f51d439334d4b2ca34bee30f08118e24c3c7efdca3d6a684e40aabbda29c01ac
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
