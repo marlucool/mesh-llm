@@ -42,10 +42,10 @@
       "provenance": null
     },
     "public-rocm-release": {
-      "reference": "ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:0e13e5d2d2c121df265ff6c69be81e468989e09f81d6b7ff049b110cc0bb0d2b",
+      "reference": "ghcr.io/marlucool/mesh-llm-ci-runner@sha256:eda3a60edcaeee9b36764b164e499806f7198db0a491acc87fae21499ae1c238",
       "environment": "public",
       "backend": "rocm",
-      "native_toolchain_epoch": "mesh-llm-cuda-runner-sha256-0e13e5d2d2c121df265ff6c69be81e468989e09f81d6b7ff049b110cc0bb0d2b",
+      "native_toolchain_epoch": "mesh-llm-ci-runner-sha256-eda3a60edcaeee9b36764b164e499806f7198db0a491acc87fae21499ae1c238",
       "receipt": null,
       "provenance": null
     },
