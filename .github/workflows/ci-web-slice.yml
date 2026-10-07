@@ -72,6 +72,9 @@ jobs:
     timeout-minutes: 20
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:8d93de6ba30173e825a16fdecf011f9c632edc6e1259df7289e491b0a05f829d
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     defaults:
       run:
         working-directory: crates/mesh-llm-ui
@@ -114,6 +117,9 @@ jobs:
     timeout-minutes: 20
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:4c3f0a73b8d47c10f2ac98047b3f1ca226992dcff72cb57b029238c98b828f94
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     defaults:
       run:
         working-directory: crates/mesh-llm-ui
@@ -168,6 +174,9 @@ jobs:
     timeout-minutes: 20
     container:
       image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:1c73f0f2e4b2ce657cc9dc49c9c27374f3c364af19f884f1970331c3689da5d2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     steps:
       - uses: Mesh-LLM/mesh-llm/.github/actions/audit-depot-pr-isolation@ed07043b84d720aab30e75ed2f038f7042576f16
         with:
