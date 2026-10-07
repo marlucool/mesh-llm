@@ -598,8 +598,8 @@ jobs:
         include:
           - cuda_version: '12.9.2'
             cuda_major: '12'
-            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:e03d19014e3b5f414c7cc5cfa6cd524a2f0bfa42e2cb44ae826096ae90a46ece
-            toolchain_epoch: mesh-llm-cuda-runner-sha256-c5b85ef527230f77cf9933ef40bcb44316f9bbcb8fd2ce0651b58acda5143dfd
+            runner_image: ghcr.io/marlucool/mesh-llm-ci-runner@sha256:94bc66165dad70974eaf1d8c64150b073fdc1e06660da85bdefa658ae8661256
+            toolchain_epoch: mesh-llm-ci-runner-sha256-94bc66165dad70974eaf1d8c64150b073fdc1e06660da85bdefa658ae8661256
           - cuda_version: '13.1.2'
             cuda_major: '13'
             runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:cd8de4ac53ed222a53aeb9b9a1e915a42e1aa29266d8b7e84bf3fbdd5a4b4e37
@@ -662,8 +662,8 @@ jobs:
         include:
           - cuda_version: '12.9.2'
             cuda_major: '12'
-            runner_image: ghcr.io/mesh-llm/mesh-llm-cuda-runner@sha256:e03d19014e3b5f414c7cc5cfa6cd524a2f0bfa42e2cb44ae826096ae90a46ece
-            toolchain_epoch: mesh-llm-cuda-runner-sha256-c5b85ef527230f77cf9933ef40bcb44316f9bbcb8fd2ce0651b58acda5143dfd
+            runner_image: ghcr.io/marlucool/mesh-llm-ci-runner@sha256:94bc66165dad70974eaf1d8c64150b073fdc1e06660da85bdefa658ae8661256
+            toolchain_epoch: mesh-llm-ci-runner-sha256-94bc66165dad70974eaf1d8c64150b073fdc1e06660da85bdefa658ae8661256
             cuda_architectures: '61;75;80;86;87;89;90'
             cuda_architectures_cache: '61_75_80_86_87_89_90'
           - cuda_version: '13.1.2'
