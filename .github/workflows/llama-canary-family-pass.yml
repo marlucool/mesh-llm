@@ -87,19 +87,19 @@ jobs:
       - uses: ./.github/actions/setup-canary-runner
       - name: Download previous candidate
         if: inputs.previous_package != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.previous_package }}
           path: ${{ runner.temp }}/canary-previous-${{ inputs.pass_id }}
       - name: Download prior family failure evidence
         if: inputs.feedback_pattern != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ${{ inputs.feedback_pattern }}
           path: ${{ runner.temp }}/canary-feedback-${{ inputs.pass_id }}
       - name: Download prior build failure evidence
         if: inputs.feedback_build_pattern != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ${{ inputs.feedback_build_pattern }}
           path: ${{ runner.temp }}/canary-feedback-${{ inputs.pass_id }}
@@ -227,7 +227,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/use-canary-cache
       - uses: ./.github/actions/setup-canary-python
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.build.outputs.package }}
           path: ${{ env.PACKAGE }}
@@ -291,11 +291,11 @@ jobs:
         with:
           ref: ${{ inputs.source }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.build.outputs.package }}
           path: ${{ runner.temp }}/aggregate-input
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: llama-family-${{ github.run_id }}-${{ needs.build.outputs.identity }}-*-${{ inputs.pass_id }}-*
           path: ${{ runner.temp }}/aggregate-evidence
