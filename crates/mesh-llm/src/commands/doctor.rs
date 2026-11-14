@@ -393,7 +393,7 @@ fn write_json_file(output_dir: &Path, file_name: &str, value: &Value) -> Result<
     let path = output_dir.join(file_name);
     let json = serde_json::to_string_pretty(value)?;
     std::fs::write(&path, json)
-        .with_context(|| format!("write diagnostic file {}", path.display()))?
+        .with_context(|| format!("write diagnostic file {}", path.display()))?;
     Ok(path)
 }
 

@@ -56,7 +56,7 @@ fn install_windows_service(
                 "/TN",
                 WINDOWS_TASK_NAME,
                 "/TR",
-                task_command,
+                &task_command,
                 "/F",
                 "/RL",
                 "LIMITED",
@@ -111,8 +111,8 @@ fn install_windows_service(
             "installed; automatic start needs manual follow-up".to_string()
         },
         messages,
-        service_file: paths.service_env_file,
-        env_file: paths.service_env_file,
+        service_file: paths.service_env_file.clone(),
+        env_file: paths.service_env_file.clone(),
         runner_file: None,
     })
 }
@@ -212,7 +212,7 @@ fn install_systemd_service(
         },
         messages,
         service_file: paths.systemd_unit_path,
-        env_file: paths.service_env_file,
+        env_file: paths.service_env_file.clone(),
         runner_file: None,
     })
 }
@@ -340,7 +340,7 @@ fn install_launchd_service(
         },
         messages,
         service_file: paths.launchd_plist_path,
-        env_file: paths.service_env_file,
+        env_file: paths.service_env_file.clone(),
         runner_file: Some(paths.service_runner),
     })
 }

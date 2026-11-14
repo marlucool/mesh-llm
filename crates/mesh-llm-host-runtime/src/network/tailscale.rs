@@ -458,7 +458,7 @@ fn read_status() -> Result<TailscaleStatus> {
 /// keeps the join endpoint fail-closed when Tailscale is unavailable.
 fn read_status_cached() -> Result<TailscaleStatus> {
     {
-        let cache = STATUS_CACHE
+        let mut cache = STATUS_CACHE
             .lock()
             .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
         if let Some(cached) = cache.as_ref() {
@@ -472,7 +472,7 @@ fn read_status_cached() -> Result<TailscaleStatus> {
 
     match fresh {
         Ok(status) => {
-            let cache = STATUS_CACHE
+            let mut cache = STATUS_CACHE
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Tailscale status cache lock poisoned"))?;
             *cache = Some(CachedTailscaleStatus {

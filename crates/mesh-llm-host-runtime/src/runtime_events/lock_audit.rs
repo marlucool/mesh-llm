@@ -138,6 +138,7 @@ pub(crate) enum Context {
 /// A gate, the progress lane, the reducer snapshot, the replay buffer, and
 /// the subscriber registry are all excluded, because a drain pass holds
 /// those for as long as its work takes.
+#[allow(dead_code)]
 pub(crate) const RESERVE_ALLOWED: u32 = LockClass::ReservationSlot.bit()
     | LockClass::ReservationFreeList.bit()
     | LockClass::ChildrenByRoot.bit()
@@ -145,6 +146,7 @@ pub(crate) const RESERVE_ALLOWED: u32 = LockClass::ReservationSlot.bit()
 
 /// Classes a producer is permitted to take once the audit is enforcing:
 /// none. `try_submit` must reach the ingress structure through atomics.
+#[allow(dead_code)]
 pub(crate) const PRODUCER_ALLOWED: u32 = 0;
 
 #[cfg(debug_assertions)]
