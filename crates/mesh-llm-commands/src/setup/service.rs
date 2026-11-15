@@ -56,7 +56,7 @@ fn install_windows_service(
                 "/TN",
                 WINDOWS_TASK_NAME,
                 "/TR",
-                &task_command,
+                task_command.as_str(),
                 "/F",
                 "/RL",
                 "LIMITED",
