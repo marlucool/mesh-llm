@@ -54,7 +54,10 @@ __global__ void compute_fp32_kernel(float* sink, int iters) {
 }
 
 __device__ __forceinline__ __half2 half2_fma_compat(__half2 a, __half2 b, __half2 c) {
-    return __hadd2(__hmul2(a, b), c);
+    float af = __half2float(a);
+    float bf = __half2float(b);
+    float cf = __half2float(c);
+    return __floats2half_rn(af * bf + cf);
 }
 
 __global__ void compute_fp16_kernel(float* sink, int iters) {
