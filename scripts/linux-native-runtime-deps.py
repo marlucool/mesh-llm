@@ -501,7 +501,7 @@ def parse_args() -> argparse.Namespace:
         subparser.add_argument("--arch", choices=("x86_64", "aarch64", "arm"))
         if command == "collect":
             subparser.add_argument("--search-dir", type=pathlib.Path, action="append", default=[])
-            subparser.add_argument("--cuda-major", type=int, choices=(12, 13), required=True)
+            subparser.add_argument("--cuda-major", type=int, choices=(11, 12, 13), required=True)
         if command == "order":
             subparser.add_argument("--primary", required=True)
     return parser.parse_args()
