@@ -52,7 +52,15 @@ pub(super) fn runtime_model_planning_bytes(model_path: &Path) -> Result<u64> {
     if skippy::is_layer_package_ref(&package_ref) {
         return Ok(skippy::identity_from_layer_package(&package_ref)?.source_model_bytes);
     }
-    Ok(election::total_model_bytes(model_path))
+    let weight_bytes = election::total_model_bytes(model_path);
+    // A Laya model holds a worst-case read reserve on top of its weights; the
+    // capacity ledger reserves from this, so charge it here.
+    Ok(match models::gguf::scan_gguf_compact_meta(model_path) {
+        Some(meta) if super::local_laya::is_laya(Some(&meta)) => {
+            super::local_laya::laya_resident_bytes(weight_bytes, &meta)
+        }
+        _ => weight_bytes,
+    })
 }
 pub(super) async fn split_runtime_compact_meta(
     package: &skippy::SkippyPackageIdentity,
@@ -88,42 +96,26 @@ pub(super) fn split_runtime_kv_bytes_per_token(
 
 /// Resolve the K/V cache types that split stages will actually load with.
 ///
-/// Stage loading applies the family default (for example Inkling's Q4_0 K/V)
-/// ahead of the size-tiered `KvCachePolicy`. Planning must resolve K/V the same
-/// way, or it budgets for a cheaper cache than the stages allocate and
-/// over-packs the topology into an out-of-memory load.
+/// Planning uses the same package-backed default as stage loading so it
+/// budgets the allocation that will actually be created.
 pub(super) fn split_effective_kv_cache_quant(
     package: &skippy::SkippyPackageIdentity,
     compact_meta: &models::gguf::GgufCompactMeta,
     cache_type_k_override: Option<&str>,
     cache_type_v_override: Option<&str>,
 ) -> models::gguf::GgufKvCacheQuant {
-    // Guard the size-tiered default against the model's quantised-KV
-    // compatibility (Flash Attention / block alignment) so planning budgets for
-    // the same cache the stage load can actually allocate. The family default
-    // gets the same metadata guard: a family that defaults to quantised K/V
-    // (Inkling -> q4_0) must fall back to f16 when the actual GGUF metadata
-    // cannot load it, or planning and load both select an unloadable cache.
-    // Explicit overrides below are never guarded — an override that cannot
-    // load must fail loudly.
-    let size_policy = skippy::KvCachePolicy::for_model_size(package.source_model_bytes)
-        .guarded_for_model(Some(compact_meta));
-    let family_default = skippy::family_policy_for_compact_meta(compact_meta)
-        .default_kv_cache_type
-        .and_then(|default| models::gguf::GgufKvCacheQuant::from_llama_args(default, default))
-        .map(|quant| compact_meta.compatible_default_kv_cache_quant(quant))
-        .map(|quant| quant.k.as_llama_arg());
-
-    // Explicit user overrides win, then the family default, then model size.
-    let effective_k = cache_type_k_override
-        .or(family_default)
-        .unwrap_or(size_policy.cache_type_k());
-    let effective_v = cache_type_v_override
-        .or(family_default)
-        .unwrap_or(size_policy.cache_type_v());
+    let package_policy =
+        skippy::KvCachePolicy::from_publisher_defaults(package.publisher_defaults.as_ref())
+            .guarded_for_model(Some(compact_meta));
+    let effective_k = cache_type_k_override.unwrap_or(package_policy.cache_type_k());
+    let effective_v = cache_type_v_override.unwrap_or(package_policy.cache_type_v());
 
     models::gguf::GgufKvCacheQuant::from_llama_args(effective_k, effective_v).unwrap_or_else(|| {
-        split_kv_cache_quant(&size_policy, cache_type_k_override, cache_type_v_override)
+        split_kv_cache_quant(
+            &package_policy,
+            cache_type_k_override,
+            cache_type_v_override,
+        )
     })
 }
 pub(super) async fn resolve_split_runtime_package(
@@ -175,7 +167,7 @@ pub(super) fn split_kv_cache_quant(
         split_kv_policy.cache_type_k(),
         split_kv_policy.cache_type_v(),
     )
-    .unwrap_or(models::gguf::GgufKvCacheQuant::Q8_0);
+    .unwrap_or(models::gguf::GgufKvCacheQuant::F16);
 
     match (cache_type_k_override, cache_type_v_override) {
         (None, None) => policy_quant,
@@ -201,6 +193,10 @@ pub(super) struct SplitParticipantExclusion {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SplitParticipantExclusionReason {
+    /// The operator's local peer block covers this peer (or a plugin's block
+    /// the operator has not lifted). Split stages receive the user's content,
+    /// so a blocked peer is never a candidate.
+    Blocked,
     Client,
     MissingVram,
     MissingModelInterest,
@@ -216,6 +212,7 @@ pub(super) enum SplitParticipantExclusionReason {
 impl SplitParticipantExclusionReason {
     pub(super) const fn as_str(self) -> &'static str {
         match self {
+            Self::Blocked => "blocked",
             Self::Client => "client",
             Self::MissingVram => "missing_vram",
             Self::MissingModelInterest => "missing_model_interest",
@@ -231,6 +228,9 @@ impl SplitParticipantExclusionReason {
 
     pub(super) const fn recommendation(self) -> &'static str {
         match self {
+            Self::Blocked => {
+                "Unblock this peer, or remove the plugin block, to let it join split serving."
+            }
             Self::Client => "Run this peer in serve mode if it should contribute compute.",
             Self::MissingVram => {
                 "Check GPU visibility or lower --max-vram only after confirming backend/device detection."
@@ -459,8 +459,9 @@ fn split_participant_blocker(
 }
 
 pub(super) const fn split_participant_exclusion_reason_order()
--> [SplitParticipantExclusionReason; 10] {
+-> [SplitParticipantExclusionReason; 11] {
     [
+        SplitParticipantExclusionReason::Blocked,
         SplitParticipantExclusionReason::StageControlUnreachable,
         SplitParticipantExclusionReason::PackageManifestMismatch,
         SplitParticipantExclusionReason::UnverifiedLocalSource,
@@ -493,7 +494,15 @@ pub(super) async fn collect_split_participant_membership(
         Some(node.first_joined_mesh_ts().await.unwrap_or(0)),
     )];
     let mut excluded = Vec::new();
+    let blocked_now_ms = crate::network::peer_blocks::now_ms();
     for peer in node.peers().await {
+        if node.peer_blocks.is_blocked(&peer.id, blocked_now_ms) {
+            excluded.push(SplitParticipantExclusion {
+                node_id: peer.id,
+                reason: SplitParticipantExclusionReason::Blocked,
+            });
+            continue;
+        }
         if let Some(reason) = split_peer_preflight_exclusion_reason(
             &peer,
             model_name,
@@ -567,7 +576,15 @@ pub(super) async fn collect_split_participants(
         )),
     ];
     let mut excluded = Vec::new();
+    let blocked_now_ms = crate::network::peer_blocks::now_ms();
     for peer in node.peers().await {
+        if node.peer_blocks.is_blocked(&peer.id, blocked_now_ms) {
+            excluded.push(SplitParticipantExclusion {
+                node_id: peer.id,
+                reason: SplitParticipantExclusionReason::Blocked,
+            });
+            continue;
+        }
         if let Some(reason) = split_peer_preflight_exclusion_reason(
             &peer,
             model_name,

@@ -5,6 +5,7 @@ mod hardware_validation;
 mod model;
 mod model_validation;
 mod plugin_validation;
+mod size;
 mod store;
 mod validate;
 mod validation_support;
@@ -41,6 +42,7 @@ pub use plugin_validation::{
     PluginSettingConstraint, PluginSettingSchema, PluginValueKind, PluginValueSchema,
     SUPPORTED_PLUGIN_CONFIG_SCHEMA_VERSION,
 };
+pub use size::{IecSizeParseError, parse_iec_size};
 pub use store::{
     ConfigStore, config_path, config_to_toml, load_config, parse_config_toml,
     parse_config_toml_structural,
@@ -61,10 +63,10 @@ pub use wiring_validation::wiring_manifest_diagnostics;
 #[cfg(test)]
 mod tests {
     use super::{
-        ConfigStore, ConfigValueSource, GpuAssignment, LifecycleLogParserMode,
-        LocalServingNodeConfig, MeshConfig, SpeculativeConfig, built_in_config_schema,
-        canonicalize_built_in_config_identifier, parse_config_toml,
-        resolve_lifecycle_log_parser_override, validate_config,
+        ConfigApplyMode, ConfigRestartScope, ConfigStore, ConfigValueSource, GpuAssignment,
+        KvDiskTierMode, LifecycleLogParserMode, LocalServingNodeConfig, MeshConfig,
+        SpeculativeConfig, built_in_config_schema, canonicalize_built_in_config_identifier,
+        parse_config_toml, resolve_lifecycle_log_parser_override, validate_config,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -293,6 +295,86 @@ skippy_abi = "0.1.25"
     }
 
     #[test]
+    fn disk_cache_config_parses_defaults_and_fixed_mode() {
+        let defaults = parse_config_toml("").expect("empty config should parse");
+        assert_eq!(defaults.runtime.kv_cache.disk.mode, None);
+        assert_eq!(
+            defaults.runtime.kv_cache.disk.effective_mode(),
+            KvDiskTierMode::Off
+        );
+        assert_eq!(defaults.runtime.kv_cache.disk.minimum_free_mib, None);
+        assert_eq!(
+            defaults.runtime.kv_cache.disk.effective_minimum_free_mib(),
+            16_384
+        );
+        assert_eq!(defaults.runtime.kv_cache.disk.budget_mib, None);
+        assert_eq!(
+            defaults.runtime.kv_cache.disk.codec,
+            crate::KvDiskCodec::Native
+        );
+
+        // The directory must be absolute on the host running the test, and a
+        // drive letter is what makes a path absolute on Windows.
+        let directory = if cfg!(windows) {
+            r"C:\fast-disk\mesh-kv-cache"
+        } else {
+            "/fast-disk/mesh-kv-cache"
+        };
+        let fixed = parse_config_toml(&format!(
+            r#"
+[runtime.kv_cache.disk]
+mode = "fixed"
+directory = '{directory}'
+budget_mib = 32768
+minimum_free_mib = 16384
+codec = "cachegen"
+"#
+        ))
+        .expect("fixed disk-cache config should parse");
+        assert_eq!(
+            fixed.runtime.kv_cache.disk.mode,
+            Some(KvDiskTierMode::Fixed)
+        );
+        assert_eq!(fixed.runtime.kv_cache.disk.budget_mib, Some(32_768));
+        assert_eq!(
+            fixed.runtime.kv_cache.disk.codec,
+            crate::KvDiskCodec::CacheGen
+        );
+    }
+
+    #[test]
+    fn disk_cache_config_rejects_invalid_mode_budget_and_path_combinations() {
+        for (raw, expected) in [
+            (
+                "[runtime.kv_cache.disk]\nmode = \"fixed\"\n",
+                "budget_mib is required",
+            ),
+            (
+                "[runtime.kv_cache.disk]\nmode = \"auto\"\nbudget_mib = 1024\n",
+                "budget_mib is only valid",
+            ),
+            (
+                "[runtime.kv_cache.disk]\nmode = \"fixed\"\nbudget_mib = 0\n",
+                "must be greater than zero",
+            ),
+            (
+                "[runtime.kv_cache.disk]\ndirectory = \"relative/cache\"\n",
+                "must be an absolute path",
+            ),
+            (
+                "[runtime.kv_cache.disk]\nminimum_free_mib = 1023\n",
+                "must be at least 1024",
+            ),
+        ] {
+            let error = parse_config_toml(raw).expect_err("invalid disk-cache config must fail");
+            assert!(
+                error.to_string().contains(expected),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn native_runtime_override_rejects_unknown_backend_selection() {
         let err = parse_config_toml(
             r#"
@@ -338,6 +420,36 @@ selection = "vulcan"
                 ),
                 "unexpected validation error for {selection:?}: {error}"
             );
+        }
+    }
+
+    #[test]
+    fn disk_cache_schema_marks_static_and_live_fields_correctly() {
+        let schema = built_in_config_schema();
+        let setting = |path: &str| {
+            schema
+                .settings
+                .iter()
+                .find(|setting| setting.path.render() == path)
+                .unwrap_or_else(|| panic!("missing schema setting {path}"))
+        };
+        for path in [
+            "runtime.kv_cache.disk.mode",
+            "runtime.kv_cache.disk.directory",
+            "runtime.kv_cache.disk.codec",
+        ] {
+            assert_eq!(setting(path).apply_mode, ConfigApplyMode::StaticOnLoad);
+            assert_eq!(
+                setting(path).restart_scope,
+                ConfigRestartScope::ProcessRestart
+            );
+        }
+        for path in [
+            "runtime.kv_cache.disk.budget_mib",
+            "runtime.kv_cache.disk.minimum_free_mib",
+        ] {
+            assert_eq!(setting(path).apply_mode, ConfigApplyMode::DynamicApply);
+            assert_eq!(setting(path).restart_scope, ConfigRestartScope::None);
         }
     }
 
@@ -669,14 +781,9 @@ gpu_id = "pci:0000:65:00.0"
         }
     }
 
-    #[test]
-    fn authoring_mutators_remain_schema_classified() {
-        let canonical_paths: BTreeSet<_> = built_in_config_schema()
-            .settings
-            .into_iter()
-            .map(|setting| setting.path.render())
-            .collect();
-        let tracked = BTreeMap::from([
+    /// Each authoring mutator and the canonical schema paths it writes.
+    fn tracked_authoring_mutators() -> BTreeMap<&'static str, Vec<&'static str>> {
+        BTreeMap::from([
             ("ConfigEditor::set_version", vec!["version"]),
             ("ConfigEditor::set_gpu_assignment", vec!["gpu.assignment"]),
             ("ConfigEditor::set_gpu_parallel", vec!["gpu.parallel"]),
@@ -813,6 +920,14 @@ gpu_id = "pci:0000:65:00.0"
                 vec!["plugin.<plugin-name>.web_ui_enabled"],
             ),
             (
+                "PluginConfigEditor::web_ui_primary_tab",
+                vec!["plugin.<plugin-name>.web_ui_primary_tab"],
+            ),
+            (
+                "PluginConfigEditor::allow_peer_blocks",
+                vec!["plugin.<plugin-name>.allow_peer_blocks"],
+            ),
+            (
                 "PluginConfigEditor::command",
                 vec!["plugin.<plugin-name>.command"],
             ),
@@ -837,7 +952,17 @@ gpu_id = "pci:0000:65:00.0"
                 "PluginConfigEditor::lazy_start",
                 vec!["plugin.<plugin-name>.startup.lazy_start"],
             ),
-        ]);
+        ])
+    }
+
+    #[test]
+    fn authoring_mutators_remain_schema_classified() {
+        let canonical_paths: BTreeSet<_> = built_in_config_schema()
+            .settings
+            .into_iter()
+            .map(|setting| setting.path.render())
+            .collect();
+        let tracked = tracked_authoring_mutators();
         let ignored = BTreeSet::from([
             "ConfigEditor::new",
             "ConfigEditor::into_config",
@@ -881,9 +1006,12 @@ gpu_id = "pci:0000:65:00.0"
         let occurrences = [
             ("MeshConfig", 1usize),
             ("OwnerControlConfig", 1),
+            ("PaymentsConfig", 1),
             ("GpuConfig", 1),
             ("RuntimeConfig", 1),
             ("NativeRuntimeConfig", 1),
+            ("RuntimeKvCacheConfig", 1),
+            ("KvDiskTierConfig", 1),
             ("MeshRequirementsConfig", 1),
             ("ModelConfigEntry", 1),
             ("ModelFitConfig", 2),
@@ -910,8 +1038,11 @@ gpu_id = "pci:0000:65:00.0"
             "GpuConfig",
             "MeshRequirementsConfig",
             "OwnerControlConfig",
+            "PaymentsConfig",
             "RuntimeConfig",
             "NativeRuntimeConfig",
+            "RuntimeKvCacheConfig",
+            "KvDiskTierConfig",
             "TelemetryConfig",
             "TelemetryMetricsConfig",
             "AuditConfig",

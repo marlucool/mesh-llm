@@ -267,14 +267,31 @@ class PlanCiTests(unittest.TestCase):
             plan["affected_crates"],
             ["mesh-llm-host-runtime", "mesh-llm"],
         )
-        self.assertEqual(plan["domains"], ["rust", "runtime-product"])
+        self.assertEqual(
+            plan["domains"], ["rust", "runtime-product", "platform-windows-cfg"]
+        )
         self.assertEqual(
             plan["required_slices"],
-            ["quality", "ui-artifact", "static-abi", "rust-tests", "runtime-product", "product-smoke"],
+            [
+                "quality",
+                "ui-artifact",
+                "static-abi",
+                "rust-tests",
+                "runtime-product",
+                "platform-checks",
+                "product-smoke",
+            ],
         )
         self.assertEqual(
             [row["id"] for row in plan["matrices"]["runtime_products"]],
             ["linux-cpu"],
+        )
+        # A shared host-runtime change must prove itself on Windows as well as
+        # Linux: `platform-windows-cfg` selects the `windows-unit` row, which
+        # already runs this crate as a shared owner.
+        self.assertEqual(
+            [row["id"] for row in plan["matrices"]["platform_checks"]],
+            ["windows-unit"],
         )
         self.assertEqual(
             plan["dependencies"]["runtime-product"],
@@ -370,6 +387,27 @@ class PlanCiTests(unittest.TestCase):
             ["windows-log-store"],
         )
         self.assertEqual(plan["matrices"]["runtime_products"], [])
+        self.assertEqual(plan["matrices"]["smoke"], [])
+
+    def test_plugin_crate_selects_only_the_windows_unit_row(self) -> None:
+        payload = fixture("runtime.json")
+        payload["changed_files"] = ["crates/mesh-llm-plugin/src/manifest/web_ui.rs"]
+        payload["workspace_packages"] = [
+            {"name": "mesh-llm-plugin", "path": "crates/mesh-llm-plugin"}
+        ]
+        payload["affected_crates"] = ["mesh-llm-plugin"]
+
+        plan = PLANNER.build_plan(payload, root=ROOT)
+
+        self.assertEqual(
+            [row["id"] for row in plan["matrices"]["platform_checks"]],
+            ["windows-unit"],
+        )
+        # The point of a separate platform-windows-cfg domain: Windows runs the
+        # crate's tests without the host, native runtime and product builds
+        # that platform-windows pulls in.
+        self.assertEqual(plan["matrices"]["runtime_products"], [])
+        self.assertEqual(plan["matrices"]["hosts"], [])
         self.assertEqual(plan["matrices"]["smoke"], [])
 
     def test_main_covers_every_workspace_crate_once(self) -> None:

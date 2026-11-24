@@ -27,7 +27,12 @@ class BuildReleaseScriptTests(unittest.TestCase):
     def test_dynamic_native_runtime_feature_is_required(self) -> None:
         script = HOST_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn('"web-ui,dynamic-native-runtime"', script)
+        cargo_args = self.run_build_release_with_backend("cpu").split()
+        features = set(cargo_args[cargo_args.index("--features") + 1].split(","))
+        self.assertEqual(
+            features,
+            {"web-ui", "dynamic-native-runtime", "payments"},
+        )
         self.assertIn("--no-default-features", script)
         self.assertIn("MESH_LLM_DYNAMIC_NATIVE_RUNTIME=0 is unsupported", script)
 
@@ -177,7 +182,10 @@ class BuildReleaseScriptTests(unittest.TestCase):
             return version_log.read_text(encoding="utf-8")
 
     def run_build_release_with_backend(
-        self, backend: str, *, dynamic_native_runtime: bool = True
+        self,
+        backend: str,
+        *,
+        dynamic_native_runtime: bool = True,
     ) -> str:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

@@ -163,12 +163,13 @@ pub(crate) use identity_persistence::{identity_home_dir, identity_state_dir};
     reason = "public compatibility re-export for existing mesh node callers"
 )]
 pub use node::{
-    LocalRequestMetricsSnapshot, Node, RouteEntry, RoutingTable, detect_vram_bytes_capped,
+    LocalRequestMetricsSnapshot, Node, RouteEntry, RoutingTable, detect_local_fit_bytes,
 };
 pub(crate) use node::{PeerDownReport, peer_down_endpoint_id};
 pub(crate) use peer_state::{
     ClaimedLogHead, ControlListenerLifecycle, DEAD_PEER_TTL, MeshState,
-    PEER_DOWN_REPORTER_COOLDOWN_SECS, PEER_STALE_SECS, resolve_peer_leaving,
+    PEER_DOWN_REPORTER_COOLDOWN_SECS, PEER_STALE_SECS, peer_has_observed_liveness,
+    resolve_peer_leaving,
 };
 #[expect(
     unused_imports,
@@ -178,6 +179,7 @@ pub use peer_state::{
     DisplayLatency, DisplayLatencySource, MeshCatalogEntry, NodeRole, OwnerRuntimeConfig,
     PeerAnnouncement, PeerInfo, PropagatedLatencyObservation,
 };
+pub(crate) use plugin_mesh::PluginFrameTelemetry;
 pub(crate) use stage_transport::{
     ConnectionCaptureEvent, HttpCaptureEvent, MeshBiStream, PeerLifecycleCaptureEvent,
     SelectedPathObservation, StageTopologyState,
@@ -207,3 +209,6 @@ pub(crate) mod tests;
 
 #[cfg(test)]
 mod public_identity_tests;
+
+#[cfg(feature = "payments")]
+mod payments;

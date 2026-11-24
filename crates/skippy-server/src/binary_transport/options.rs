@@ -32,6 +32,8 @@ pub struct BinaryStageOptions {
     /// the stage-control load request.
     pub continuous_batching: bool,
     pub openai: Option<EmbeddedOpenAiStageOptions>,
+    /// Shared node owner for the durable disk tier.
+    pub l3_manager: Option<skippy_cache::L3CacheManager>,
     /// Receives this stage's runtime compute time, for auto-balance
     /// split placement. `None` skips the accounting.
     pub compute_meter: Option<std::sync::Arc<crate::compute_meter::StageComputeMeter>>,
@@ -43,6 +45,9 @@ pub struct EmbeddedOpenAiStageOptions {
     pub model_id: Option<String>,
     pub default_max_tokens: u32,
     pub generation_concurrency: usize,
+    /// Planned decode-wave groups for this frontend's dispatcher. `None` keeps
+    /// the ungrouped default.
+    pub pipeline_decode_groups: Option<usize>,
     pub adaptive_generation_min_concurrency: Option<usize>,
     pub generation_queue_capacity: usize,
     pub generation_admission_timeout_secs: u64,
@@ -125,6 +130,7 @@ impl BinaryStageOptions {
                 model_id: args.openai_model_id,
                 default_max_tokens: args.openai_default_max_tokens,
                 generation_concurrency: openai_generation_concurrency,
+                pipeline_decode_groups: None,
                 adaptive_generation_min_concurrency,
                 generation_queue_capacity: openai_generation_queue_capacity,
                 generation_admission_timeout_secs: args.openai_generation_admission_timeout_secs,
@@ -161,6 +167,7 @@ impl BinaryStageOptions {
             continuous_batching: true,
             compute_meter: None,
             openai,
+            l3_manager: None,
         })
     }
 

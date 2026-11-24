@@ -20,7 +20,9 @@ use crate::validation_support::{
     validation_diagnostic,
 };
 
+mod penalty_windows;
 mod topology;
+pub(crate) use penalty_windows::collect_legacy_penalty_window_warnings;
 pub(crate) use topology::model_topology_diagnostics;
 
 pub(crate) fn validate_duplicate_model_entries(
@@ -311,11 +313,6 @@ fn validate_model_fit(config: &ModelFitConfig, base_path: &str) -> DiagnosticRes
     validate_optional_kv_cache_type(
         config.cache_type_v.as_deref(),
         &format!("{base_path}.cache_type_v"),
-    )?;
-    validate_optional_enum(
-        config.kv_cache_policy.as_deref(),
-        &["auto", "quality", "balanced", "saver"],
-        &format!("{base_path}.kv_cache_policy"),
     )?;
     validate_bool_or_auto(
         config.kv_offload.as_ref(),
@@ -926,7 +923,7 @@ fn validate_request_chat_defaults(
             ReasoningBudget::Integer(_) => {}
             ReasoningBudget::String(value) => validate_allowed(
                 value,
-                &["auto", "low", "medium", "high"],
+                &["auto", "low", "medium", "high", "unrestricted"],
                 &format!("{base_path}.reasoning_budget"),
             )?,
         }
@@ -1240,6 +1237,25 @@ verify_window_pipeline_depth = 65
             text.contains("between 1 and 64"),
             "unexpected diagnostic: {text}"
         );
+    }
+
+    #[test]
+    fn zero_pipeline_decode_groups_is_rejected_not_clamped() {
+        let config: MeshConfig = toml::from_str(
+            r#"
+[defaults.throughput]
+pipeline_decode_groups = 0
+"#,
+        )
+        .expect("config should parse before validation");
+
+        let diagnostics = validate_config_diagnostics(&config);
+        let text = legacy_validation_error_text(&diagnostics);
+        assert!(
+            text.contains("pipeline_decode_groups") && text.contains("at least 1"),
+            "expected a typed rejection for zero groups, got: {text}"
+        );
+        validate_config(&config).expect_err("zero pipeline groups must not be accepted");
     }
 
     #[test]

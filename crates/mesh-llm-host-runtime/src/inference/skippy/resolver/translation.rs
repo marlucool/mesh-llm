@@ -12,8 +12,9 @@ use skippy_protocol::{
 };
 use skippy_runtime::MtpSource;
 use skippy_server::{
-    DEFAULT_GENERATION_ADMISSION_TIMEOUT_SECS, EmbeddedOpenAiArgs, EmbeddedOpenAiRequestDefaults,
-    EmbeddedRuntimeOptions, NativeMtpProposalConfig, SpeculativeDecodeConfig, telemetry::Telemetry,
+    DEFAULT_EMBEDDED_MAX_TOKENS, DEFAULT_GENERATION_ADMISSION_TIMEOUT_SECS, EmbeddedOpenAiArgs,
+    EmbeddedOpenAiRequestDefaults, EmbeddedRuntimeOptions, NativeMtpProposalConfig,
+    SpeculativeDecodeConfig, telemetry::Telemetry,
 };
 
 use super::super::{
@@ -125,7 +126,7 @@ impl ResolvedSkippyConfig {
         .with_cache_idle_slots(self.model_fit.cache_idle_slots)
         .with_telemetry(telemetry);
 
-        options.default_max_tokens = self.request_defaults.max_tokens;
+        options.default_max_tokens = DEFAULT_EMBEDDED_MAX_TOKENS;
         options.n_gpu_layers = self.hardware.gpu_layers;
         options.mmap = self.hardware.mmap;
         options.mlock = self.hardware.mlock;
@@ -229,7 +230,6 @@ impl ResolvedSkippyConfig {
             metrics_otlp_grpc: telemetry.metrics_otlp_grpc.clone(),
             telemetry_queue_capacity: telemetry.queue_capacity,
             telemetry_level: telemetry.level,
-            operation_id: None,
             session_lifecycle_observer: None,
         })
     }
@@ -279,8 +279,13 @@ impl ResolvedSkippyConfig {
             .context("serialize request_defaults.json_schema")?;
         Ok(ResolvedEmbeddedOpenAiArgs {
             model_id: Some(self.model_id.clone()),
-            default_max_tokens: self.request_defaults.max_tokens,
+            default_max_tokens: self
+                .request_defaults
+                .max_tokens
+                .unwrap_or(DEFAULT_EMBEDDED_MAX_TOKENS),
             request_defaults: EmbeddedOpenAiRequestDefaults {
+                max_tokens: self.request_defaults.max_tokens,
+                package_request_defaults: self.request_defaults.package_request_defaults.clone(),
                 stop: self.request_defaults.stop.clone(),
                 temperature: self.request_defaults.temperature.map(|value| value as f32),
                 top_p: self.request_defaults.top_p.map(|value| value as f32),
@@ -392,6 +397,7 @@ impl ResolvedSkippyConfig {
             },
             generation_concurrency: self.throughput.parallel,
             continuous_batching: self.throughput.continuous_batching != "false",
+            pipeline_decode_groups: self.throughput.pipeline_decode_groups,
             prefill_chunk_size: self.skippy.prefill_chunk_size,
             prefill_chunk_policy: resolve_prefill_chunk_policy(&self.skippy.prefill_chunking),
             prefill_chunk_schedule: self.skippy.prefill_chunk_schedule.clone(),
@@ -469,23 +475,27 @@ impl ResolvedSkippyConfig {
         &self,
         family_default: Option<StageKvCacheConfig>,
     ) -> Result<Option<StageKvCacheConfig>> {
-        match &self.model_fit.prefix_cache {
-            ResolvedStageKvCache::FamilyDefault => Ok(family_default),
-            ResolvedStageKvCache::Disabled => Ok(Some(StageKvCacheConfig {
+        let mut resolved = match &self.model_fit.prefix_cache {
+            ResolvedStageKvCache::FamilyDefault => family_default,
+            ResolvedStageKvCache::Disabled => Some(StageKvCacheConfig {
                 mode: StageKvCacheMode::Disabled,
                 payload: StageKvCachePayload::Auto,
                 max_entries: 0,
                 max_bytes: 0,
+                l2_max_bytes: 0,
+                codec: skippy_protocol::StageKvCacheCodec::Native,
                 min_tokens: 0,
                 shared_prefix_stride_tokens: 0,
                 shared_prefix_record_limit: 0,
-            })),
+            }),
             ResolvedStageKvCache::Explicit(template) => {
                 let mut cache = family_default.unwrap_or(StageKvCacheConfig {
                     mode: template.mode.clone(),
                     payload: StageKvCachePayload::Auto,
                     max_entries: 128,
                     max_bytes: 0,
+                    l2_max_bytes: 0,
+                    codec: skippy_protocol::StageKvCacheCodec::Native,
                     min_tokens: 256,
                     shared_prefix_stride_tokens: 128,
                     shared_prefix_record_limit: 2,
@@ -507,9 +517,19 @@ impl ResolvedSkippyConfig {
                 if let Some(value) = template.shared_prefix_record_limit {
                     cache.shared_prefix_record_limit = value as u64;
                 }
-                Ok(Some(cache))
+                Some(cache)
             }
+        };
+        if self.model_fit.l2_max_bytes > 0 && resolved.is_none() {
+            anyhow::bail!(
+                "model_fit.cache_ram_mib requires an executable prefix-cache configuration"
+            );
         }
+        if let Some(cache) = resolved.as_mut() {
+            cache.l2_max_bytes = self.model_fit.l2_max_bytes;
+            cache.codec = self.model_fit.kv_cache_codec;
+        }
+        Ok(resolved)
     }
 }
 
@@ -532,6 +552,7 @@ impl ResolvedEmbeddedOpenAiArgs {
             request_defaults: EmbeddedOpenAiRequestDefaults::default(),
             generation_concurrency,
             continuous_batching: true,
+            pipeline_decode_groups: None,
             prefill_chunk_size: BUILTIN_PREFILL_CHUNK_SIZE,
             prefill_chunk_policy: "fixed".to_string(),
             prefill_chunk_schedule: None,
@@ -590,6 +611,7 @@ impl ResolvedEmbeddedOpenAiArgs {
             request_defaults: EmbeddedOpenAiRequestDefaults::default(),
             generation_concurrency,
             continuous_batching: true,
+            pipeline_decode_groups: None,
             prefill_chunk_size: BUILTIN_PREFILL_CHUNK_SIZE,
             prefill_chunk_policy: "fixed".to_string(),
             prefill_chunk_schedule: None,
@@ -652,6 +674,7 @@ impl ResolvedEmbeddedOpenAiArgs {
             request_defaults: self.request_defaults,
             generation_concurrency: self.generation_concurrency,
             continuous_batching: self.continuous_batching,
+            pipeline_decode_groups: self.pipeline_decode_groups.map(|groups| groups as usize),
             adaptive_generation_min_concurrency: None,
             generation_queue_capacity: self.generation_concurrency.saturating_mul(8).clamp(16, 256),
             generation_admission_timeout_secs: DEFAULT_GENERATION_ADMISSION_TIMEOUT_SECS,
@@ -686,6 +709,7 @@ impl ResolvedEmbeddedOpenAiArgs {
             linear_proposal_ingress: None,
             kv_lifecycle_observer: None,
             openai_guardrails: None,
+            l3_manager: crate::runtime::kv_disk_config::node_kv_disk_manager(),
         }
     }
 }

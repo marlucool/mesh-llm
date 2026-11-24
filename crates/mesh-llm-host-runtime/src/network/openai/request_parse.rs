@@ -32,6 +32,10 @@ pub(crate) const MESH_TARGET_HEADER: &str = "x-mesh-target";
 /// Remove one or more peers from the remote-mesh candidate set before
 /// selection. Comma-separated within one header value.
 pub(crate) const MESH_EXCLUDE_HEADER: &str = "x-mesh-exclude";
+/// A client-chosen id marking requests it sent to different nodes as one
+/// pair; copied unread onto the routing node's exchange events, never
+/// forwarded to a peer.
+pub(crate) const MESH_TWIN_BRACKET_HEADER: &str = "x-mesh-twin-bracket";
 pub(super) const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 const MAX_OBJECT_UPLOAD_BODY_BYTES: usize = 64 * 1024 * 1024;
 const MAX_AUDIO_UPLOAD_BODY_BYTES: usize = 64 * 1024 * 1024 + 64 * 1024;
@@ -155,10 +159,27 @@ impl BufferedHttpRequest {
         is_tokenize_request(&self.method, &self.path)
     }
 
+    /// Token counting is a capability request, not generation, so its wire
+    /// size must not be treated as model context admission.
+    pub fn is_anthropic_count_tokens_request(&self) -> bool {
+        self.method == "POST"
+            && self.client_path.split('?').next() == Some("/v1/messages/count_tokens")
+    }
+
     /// Multipart audio bytes are encoded media, not prompt text. The proxy
     /// cannot infer their eventual model context size from the wire length.
     pub fn is_audio_upload_request(&self) -> bool {
         self.method == "POST" && is_audio_upload_path(&self.client_path)
+    }
+
+    /// A System One read renders `state` into every question's own bounded
+    /// sequence, so its body size does not describe the context it needs.
+    pub fn is_system_one_request(&self) -> bool {
+        self.method == "POST"
+            && matches!(
+                self.client_path.split('?').next(),
+                Some("/systemone" | "/v1/decisions")
+            )
     }
 
     pub fn ensure_body_json(&mut self) {
@@ -203,6 +224,14 @@ impl BufferedHttpRequest {
         Ok((target, exclude))
     }
 
+    /// Raw `x-mesh-twin-bracket` header values, in order and untrimmed, so
+    /// the parser can trim HTTP whitespace (SP/HTAB) only and reject any other
+    /// whitespace as malformed.
+    pub fn twin_bracket_header_values(&self) -> Result<Vec<String>, String> {
+        untrimmed_header_values_from_raw(&self.raw, MESH_TWIN_BRACKET_HEADER)
+            .map_err(|()| format!("{MESH_TWIN_BRACKET_HEADER} header contains invalid UTF-8"))
+    }
+
     /// The only semantic request media kind trusted by artifact capture.
     ///
     /// This derives from the closed OpenAI ingress route vocabulary and a
@@ -216,7 +245,7 @@ impl BufferedHttpRequest {
             .unwrap_or(&self.client_path);
         matches!(
             path,
-            "/v1/chat/completions" | "/v1/completions" | "/v1/responses"
+            "/v1/chat/completions" | "/v1/completions" | "/v1/responses" | "/v1/messages"
         )
         .then_some(())
         .filter(|()| {
@@ -310,14 +339,21 @@ where
 
 /// Variant for host ingress boundaries that need to bind locally generated
 /// error responses to a safely established request lifecycle.
-pub(crate) async fn read_http_request_with_plugin_manager_with_context<S>(
-    stream: &mut S,
+pub(crate) async fn read_http_request_with_plugin_manager_with_context(
+    stream: &mut super::client_stream::ClientStream,
     plugin_manager: Option<&plugin::PluginManager>,
-) -> std::result::Result<BufferedHttpRequest, OpenAiRequestReadError>
-where
-    S: AsyncRead + AsyncWrite + Unpin,
-{
-    read_http_request_with_limits_with_context(stream, HTTP_READ_LIMITS, plugin_manager).await
+) -> std::result::Result<BufferedHttpRequest, OpenAiRequestReadError> {
+    let result =
+        read_http_request_with_limits_with_context(stream, HTTP_READ_LIMITS, plugin_manager).await;
+    match &result {
+        Ok(request) => stream.set_client_path(&request.client_path),
+        Err(error) => {
+            if let Some(context) = error.context() {
+                stream.set_client_path(&context.client_path);
+            }
+        }
+    }
+    result
 }
 
 pub(super) async fn read_http_request_with_limits<S>(
@@ -546,6 +582,9 @@ async fn rewrite_request_body_for_forwarding(
 
     outcome.body_json = serde_json::from_slice(body).ok();
     let Some(body_json) = outcome.body_json.as_mut() else {
+        if path.split('?').next() == Some("/v1/messages") {
+            bail!("invalid Messages JSON body");
+        }
         return Ok(outcome);
     };
 
@@ -931,6 +970,16 @@ fn capsule_nonce_headers_from_raw(raw: &[u8]) -> (Option<String>, Option<String>
 /// at least one occurrence of `name` had non-UTF-8 bytes -- the caller must
 /// reject the request rather than silently drop that occurrence.
 fn header_values_from_raw(raw: &[u8], name: &str) -> Result<Vec<String>, ()> {
+    untrimmed_header_values_from_raw(raw, name).map(|values| {
+        values
+            .iter()
+            .map(|value| value.trim().to_string())
+            .collect()
+    })
+}
+
+/// Every value of header `name`, as UTF-8, exactly as httparse returned it.
+fn untrimmed_header_values_from_raw(raw: &[u8], name: &str) -> Result<Vec<String>, ()> {
     let header_end = raw
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
@@ -948,7 +997,7 @@ fn header_values_from_raw(raw: &[u8], name: &str) -> Result<Vec<String>, ()> {
         .filter(|header| header.name.eq_ignore_ascii_case(name))
         .map(|header| {
             std::str::from_utf8(header.value)
-                .map(|value| value.trim().to_string())
+                .map(str::to_string)
                 .map_err(|_| ())
         })
         .collect()
@@ -1056,7 +1105,7 @@ pub fn rewrite_public_model_alias(
     rewrite_model_field(request, &internal);
 }
 
-fn internal_model_for_public_id(
+pub(crate) fn internal_model_for_public_id(
     requested: &str,
     models: &[String],
     descriptors: &[mesh::ServedModelDescriptor],

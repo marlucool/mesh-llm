@@ -12,6 +12,7 @@ import {
   Monitor,
   Moon,
   Network,
+  Plug,
   ScrollText,
   Settings,
   Share2,
@@ -47,6 +48,7 @@ type TopNavProps = {
   joinCommands?: TopNavJoinCommand[]
   joinLinks?: LinkItem[]
   pluginNavItems?: readonly TopNavPluginPageItem[]
+  primaryPluginTabs?: readonly TopNavPluginPageItem[]
   onPluginPageChange?: (item: TopNavPluginPageItem) => void
 }
 
@@ -252,6 +254,51 @@ function PrimaryTabs({
   )
 }
 
+function PrimaryPluginTabs({
+  items,
+  onNavigate
+}: {
+  items?: readonly TopNavPluginPageItem[]
+  onNavigate?: (item: TopNavPluginPageItem) => void
+}) {
+  if (!items || items.length === 0) return null
+
+  return (
+    <nav aria-label="Primary plugin pages" className="flex min-w-0 flex-nowrap items-center gap-[var(--nav-tab-gap)]">
+      {items.map((item) => (
+        <a
+          key={`${item.pluginName}:${item.pageId}`}
+          aria-current={item.active ? 'page' : undefined}
+          aria-label={item.label}
+          className={cn(
+            'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius)] border border-transparent px-[var(--nav-tab-pad-x)] py-[var(--nav-tab-pad-y)] text-[length:var(--nav-tab-font-size)] leading-[var(--nav-tab-line-height)] font-medium tracking-normal',
+            item.active ? 'ui-control-primary' : 'ui-control-ghost'
+          )}
+          href={item.href}
+          onClick={(event) => {
+            if (
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.altKey ||
+              event.ctrlKey ||
+              event.shiftKey
+            )
+              return
+            if (onNavigate) {
+              event.preventDefault()
+              onNavigate(item)
+            }
+          }}
+        >
+          <Plug className="size-[var(--nav-icon-size)] shrink-0" aria-hidden="true" />
+          <span className="hidden md:inline">{item.label}</span>
+        </a>
+      ))}
+    </nav>
+  )
+}
+
 function HeaderLinks({ links }: { links: { href: string; label: string }[] }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[length:var(--density-type-caption)] text-fg-faint">
@@ -266,7 +313,7 @@ function HeaderLinks({ links }: { links: { href: string; label: string }[] }) {
 }
 
 const DEFAULT_API_ACCESS_LINKS: LinkItem[] = [
-  { href: 'https://meshllm.cloud/', label: 'Docs' },
+  { href: 'https://meshllm.cloud/docs/', label: 'Docs' },
   { href: 'https://meshllm.cloud/#install', label: 'Install' }
 ]
 
@@ -744,6 +791,7 @@ export function TopNav(props: TopNavProps) {
         onTabChange={props.onTabChange}
         className="order-none w-auto min-w-0 pb-0 md:order-none md:w-auto md:pb-0"
       />
+      <PrimaryPluginTabs items={props.primaryPluginTabs} onNavigate={props.onPluginPageChange} />
       <TopNavPluginPages items={props.pluginNavItems} onNavigate={props.onPluginPageChange} />
       <div className="hidden flex-1 md:block" />
       <ApiStatusChip

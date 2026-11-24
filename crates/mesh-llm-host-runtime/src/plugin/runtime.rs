@@ -24,6 +24,7 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 pub(crate) struct ExternalPlugin {
     spec: ExternalPluginSpec,
     web_ui_enabled: Arc<Mutex<Option<bool>>>,
+    web_ui_primary_tab: Arc<Mutex<Option<bool>>>,
     instance_id: String,
     host_mode: PluginHostMode,
     summary: Arc<Mutex<PluginSummary>>,
@@ -36,6 +37,8 @@ pub(crate) struct ExternalPlugin {
     restart_lock: Arc<Mutex<()>>,
     next_request_id: AtomicU64,
     next_generation: AtomicU64,
+    /// Serves this plugin as a task in this process instead of a child.
+    in_process: Option<super::InProcessPluginRunner>,
 }
 
 pub(crate) struct PluginRuntime {
@@ -65,10 +68,13 @@ impl ExternalPlugin {
         mesh_tx: mpsc::Sender<PluginMeshEvent>,
         rpc_bridge: Arc<Mutex<Option<Arc<dyn PluginRpcBridge>>>>,
         runtime_data_producer: RuntimeDataProducer,
+        in_process: Option<super::InProcessPluginRunner>,
     ) -> Result<Self> {
+        let in_process = in_process.filter(|_| spec.command.is_empty());
         let plugin = Self {
             spec: spec.clone(),
             web_ui_enabled: Arc::new(Mutex::new(spec.web_ui_enabled)),
+            web_ui_primary_tab: Arc::new(Mutex::new(spec.web_ui_primary_tab)),
             instance_id,
             host_mode,
             summary: Arc::new(Mutex::new(PluginSummary {
@@ -96,6 +102,7 @@ impl ExternalPlugin {
             restart_lock: Arc::new(Mutex::new(())),
             next_request_id: AtomicU64::new(1),
             next_generation: AtomicU64::new(1),
+            in_process,
         };
         if spec.startup.lazy_start {
             plugin.mark_deferred().await;
@@ -123,6 +130,7 @@ impl ExternalPlugin {
             live_manifest: manifest.as_ref(),
             installed_metadata: self.spec.installed_metadata.as_ref(),
             web_ui_enabled: *self.web_ui_enabled.lock().await,
+            web_ui_primary_tab: self.web_ui_primary_tab.lock().await.unwrap_or(false),
             runtime_available: summary.status == "running",
             runtime_unavailable_reason: summary.error.as_deref(),
         });
@@ -131,6 +139,15 @@ impl ExternalPlugin {
 
     pub(crate) async fn set_web_ui_enabled(&self, enabled: bool) -> PluginWebUiState {
         *self.web_ui_enabled.lock().await = Some(enabled);
+        self.publish_summary().await;
+        self.summary().await.web_ui
+    }
+
+    pub(crate) async fn set_web_ui_primary_tab(
+        &self,
+        primary_tab_enabled: bool,
+    ) -> PluginWebUiState {
+        *self.web_ui_primary_tab.lock().await = Some(primary_tab_enabled);
         self.publish_summary().await;
         self.summary().await.web_ui
     }
@@ -266,6 +283,9 @@ impl ExternalPlugin {
                     host_version: crate::VERSION.to_string(),
                     host_info_json,
                     mesh_visibility: proto_mesh_visibility(self.host_mode.mesh_visibility),
+                    host_capabilities: vec![
+                        mesh_llm_plugin::host_capabilities::PEER_BLOCKS.to_string(),
+                    ],
                 }),
                 Some(self.spec.startup.init_timeout()),
             )
@@ -417,6 +437,12 @@ impl ExternalPlugin {
             let stream = tokio::net::TcpStream::connect(address).await?;
             let (generation, outbound_tx, pending) =
                 self.install_runtime(None, LocalStream::Tcp(stream)).await;
+            return self.finish_startup(generation, outbound_tx, pending).await;
+        }
+
+        if let Some(runner) = &self.in_process {
+            let stream = super::in_process::start_in_process(&self.spec.name, runner);
+            let (generation, outbound_tx, pending) = self.install_runtime(None, stream).await;
             return self.finish_startup(generation, outbound_tx, pending).await;
         }
 
@@ -597,17 +623,19 @@ impl ExternalPlugin {
         })
     }
 
-    pub(crate) async fn call_tool_without_timeout(
+    /// `None` waits indefinitely; the caller owns cancellation.
+    pub(crate) async fn call_tool_with_timeout(
         &self,
         tool_name: &str,
         arguments_json: &str,
+        timeout: Option<std::time::Duration>,
     ) -> Result<ToolCallResult> {
         let response = self
             .invoke_service(
                 proto::ServiceKind::Operation,
                 tool_name,
                 arguments_json,
-                None,
+                timeout,
             )
             .await?;
         Ok(ToolCallResult {
@@ -1003,7 +1031,7 @@ fn plugin_web_ui_asset_root(spec: &ExternalPluginSpec) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::super::config::{MeshConfig, PluginConfigEntry, resolve_plugins};
     use super::super::transport::{read_envelope, write_envelope};
     use super::super::{PluginCapabilityProvider, PluginEndpointSummary};
@@ -1016,7 +1044,8 @@ mod tests {
         InstalledPluginManifestMetadata, InstalledPluginMetadata,
         InstalledPluginWebUiBundleMetadata, InstalledPluginWebUiConfigSectionMetadata,
         InstalledPluginWebUiMetadata, InstalledPluginWebUiPageMetadata,
-        InstalledPluginWebUiValidation, InstalledPluginWebUiValidationStatus,
+        InstalledPluginWebUiPagePlacement, InstalledPluginWebUiValidation,
+        InstalledPluginWebUiValidationStatus,
     };
     use std::collections::BTreeMap;
     use std::ffi::OsStr;
@@ -1055,6 +1084,8 @@ mod tests {
                         route: "index.html".into(),
                         bundle_id: "main".into(),
                         entry_script: "assets/app.js".into(),
+                        placement: InstalledPluginWebUiPagePlacement::Auxiliary,
+                        host_header: None,
                     }],
                     config_sections: vec![InstalledPluginWebUiConfigSectionMetadata {
                         id: "settings".into(),
@@ -1063,6 +1094,7 @@ mod tests {
                         parent_tab: Some("integrations".into()),
                         bundle_id: "main".into(),
                     }],
+                    contributions: Vec::new(),
                     bundles: vec![InstalledPluginWebUiBundleMetadata {
                         id: "main".into(),
                         root_path: "web".into(),
@@ -1094,12 +1126,33 @@ mod tests {
             env: BTreeMap::new(),
             startup: Default::default(),
             web_ui_enabled,
+            web_ui_primary_tab: None,
             installed_metadata: Some(installed_metadata_with_web_ui(
                 temp_dir.path().to_path_buf(),
                 validation_status,
                 asset_root,
             )),
         }
+    }
+
+    /// A builtin spec with no command, as resolved for an in-process plugin.
+    pub(crate) fn in_process_plugin(
+        name: &str,
+        runner: crate::plugin::InProcessPluginRunner,
+    ) -> ExternalPlugin {
+        let mut plugin = plugin_for_spec(ExternalPluginSpec {
+            name: name.into(),
+            command: String::new(),
+            args: Vec::new(),
+            url: None,
+            env: BTreeMap::new(),
+            startup: Default::default(),
+            web_ui_enabled: None,
+            web_ui_primary_tab: None,
+            installed_metadata: None,
+        });
+        plugin.in_process = Some(runner);
+        plugin
     }
 
     fn plugin_for_spec(spec: ExternalPluginSpec) -> ExternalPlugin {
@@ -1130,6 +1183,7 @@ mod tests {
                 startup: Some(spec.startup.summary()),
                 error: None,
             })),
+            web_ui_primary_tab: Arc::new(Mutex::new(spec.web_ui_primary_tab)),
             spec,
             web_ui_enabled: Arc::new(Mutex::new(web_ui_enabled)),
             instance_id: "test-instance".into(),
@@ -1150,6 +1204,7 @@ mod tests {
             restart_lock: Arc::new(Mutex::new(())),
             next_request_id: AtomicU64::new(1),
             next_generation: AtomicU64::new(1),
+            in_process: None,
         };
         (plugin, runtime_data)
     }
@@ -1384,6 +1439,8 @@ mod tests {
                 name: "demo".into(),
                 enabled: Some(true),
                 web_ui_enabled: None,
+                web_ui_primary_tab: None,
+                allow_peer_blocks: None,
                 command: Some("mesh-llm-plugin-demo".into()),
                 args: Vec::new(),
                 url: Some("\u{2003}https://plugin.example.test/v1\u{2003}".into()),

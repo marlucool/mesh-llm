@@ -71,12 +71,14 @@ produces a clear startup error rather than a partial start.
 |---|---|---|---|---|---|---|
 | `gpu.assignment` | enum | `auto` (default), `pinned` | node-level | process restart | wired | none |
 | `gpu.parallel` | integer | optional total parallel slot count; unset lets the runtime choose (currently 4) | node-level | process restart | wired | `--parallel` |
+| `gpu.host_ram_offload` | boolean | `false` (default), `true`: lets the local fit and auto-join count system RAM on a GPU host; the advertised capacity never includes RAM | node-level | process restart | wired | none |
 | `mesh_requirements.min_node_version`<br>`mesh_requirements.max_node_version` | string (semver) | optional peer version bounds; unset means no bound | node-level | process restart | wired | none |
 | `mesh_requirements.min_protocol_version`<br>`mesh_requirements.max_protocol_version` | integer | `0` means no bound | node-level | process restart | wired | none |
 | `mesh_requirements.require_release_attestation` | boolean | `false` | node-level | process restart | wired | none |
 | `mesh_requirements.release_signer_keys` | array of string | `[]`; when non-empty, only those signer keys admit peers | node-level | process restart | wired | none |
 | `owner_control.bind` | socket address | unset (auto); e.g. `[::]:7447` | node-level | process restart | wired | none |
 | `owner_control.advertise_addr` | socket address | unset (auto-detected) | node-level | process restart | wired | none |
+| `payments.wallet` | string | unset: the only running `wallet.v1` plugin | node-level | process restart | wired | none |
 | `telemetry.enabled` | boolean | `false` | node-level | process restart | wired | none |
 | `telemetry.service_name` | string | `mesh-llm` | node-level | process restart | wired | none |
 | `telemetry.endpoint` | URL | unset | node-level | process restart | wired | none |
@@ -114,7 +116,7 @@ produces a clear startup error rather than a partial start.
 | `runtime.listen_all` | boolean | `false` | node-level | process restart | wired | none |
 | `runtime.mode` | enum | `serve` (default), `on_demand`, `client` | node-level | process restart | wired | none |
 | `runtime.startup_failure_policy` | enum | `best_effort` (default), `fail_fast` | node-level | process restart | wired | none |
-| `runtime.lifecycle_log_parser` | enum | `auto` (default), `enabled`, `disabled`; `auto` keeps only parser categories without equivalent native lifecycle events | node-level | process restart | wired | none |
+| `runtime.lifecycle_log_parser` | enum | `auto` (default), `enabled`, `disabled`; see [Lifecycle log parser](#lifecycle-log-parser) | node-level | process restart | wired | none |
 | `runtime.drain_timeout_secs` | integer | `30`; 1–3600, must not exceed the max | node-level | process restart | wired | none |
 | `runtime.drain_timeout_max_secs` | integer | `300`; 1–3600 | node-level | process restart | wired | none |
 | `runtime.activity.enabled` | boolean | `false` | node-level | process restart | wired | none |
@@ -126,6 +128,11 @@ produces a clear startup error rather than a partial start.
 | `runtime.reconcile_model_targets` | boolean | `false` | node-level | process restart | wired | none |
 | `runtime.reconcile_model_target_demand_upgrades` | boolean | `false` | node-level | process restart | wired | none |
 | `runtime.native_runtime.mesh_version`<br>`runtime.native_runtime.skippy_abi`<br>`runtime.native_runtime.selection` | string | unset (auto-selected) | node-level | process restart | wired | none |
+| `runtime.kv_cache.disk.mode` | enum | `off` (default), `auto`, `fixed` | node-level | process restart | wired | `--kv-cache-disk` |
+| `runtime.kv_cache.disk.directory` | absolute path | `$MESH_LLM_HOME/kv-cache` | node-level | process restart | wired | `--kv-cache-disk-dir` |
+| `runtime.kv_cache.disk.budget_mib` | integer | required and > 0 only for `fixed` | node-level | applies dynamically | wired | fixed size passed to `--kv-cache-disk` |
+| `runtime.kv_cache.disk.minimum_free_mib` | integer | `16384`; minimum `1024` | node-level | applies dynamically | wired | `--kv-cache-min-free` |
+| `runtime.kv_cache.disk.codec` | enum | `native` (default), `cachegen` | node-level | process restart | wired | config only |
 | `runtime.model_target_demand_upgrade_min_requests` | integer | `2` | node-level | process restart | wired | none |
 | `runtime.model_target_demand_upgrade_max_age_secs` | integer | `3600` | node-level | process restart | wired | none |
 | `advanced.server.alias` | string | unset; per-model alias overrides the default | both | model reload | wired; becomes the served identity used by `/v1/models` and routing | none |
@@ -133,6 +140,33 @@ produces a clear startup error rather than a partial start.
 See [Runtime Lifecycle](/docs/pages/runtime-lifecycle/#runtime-modes) for mode
 behavior and [Activity-aware admission](/docs/pages/runtime-lifecycle/#activity-aware-admission)
 for the activity policy and privacy boundary.
+
+### Lifecycle log parser
+
+Model loading, KV cache, device, and readiness state come from structured
+runtime events. The CLI, TUI, JSON log, management API, and node state never
+depend on parsed llama.cpp log text. `runtime.lifecycle_log_parser` (or
+`MESH_LLM_LIFECYCLE_LOG_PARSER`) controls whether parsed native log summaries
+are forwarded as debug-level `LlamaNativeLog` output as well:
+
+- `auto` (default) is structured-first. A parsed category is forwarded only
+  when the loaded native runtime cannot report it through a confirmed
+  structured event family. `backend` needs device events, `kv_cache` needs KV
+  events, `memory` and `tokenizer` need model-load events v2, and `model`
+  needs model-load events v2 plus model-open events. None of these count
+  unless the runtime event reporter family is also confirmed and the event
+  system is on. A current runtime therefore suppresses parsed GGUF model
+  summaries while retaining one dedicated compatibility note for SafeTensors
+  opens, which bypass native model-open callbacks. Older runtimes keep the
+  parser as a compatibility fallback.
+- `enabled` forwards every parsed category regardless of runtime
+  capabilities. Use it for debugging; the output is debug-only.
+- `disabled` forwards no parsed categories.
+
+Raw native output always goes to `<runtime-root>/<pid>/logs/skippy-native.log`
+whatever this setting is. Capability-probe problems, such as a family that
+advertises a feature bit but is missing a required symbol, are reported as
+normal warnings in every mode.
 
 ## Group 3: model sources, context, KV cache, memory, and prompt caching
 
@@ -144,14 +178,13 @@ for the activity policy and privacy boundary.
 | `model_fit.ctx_size` | integer | `0` = auto | both | model reload | wired | `--ctx-size` on the ad-hoc single-model path |
 | `model_fit.batch` | integer | `0` = auto (`n_batch`) | both | model reload | wired | none |
 | `model_fit.ubatch` | integer | `0` = auto (`n_ubatch`); should not exceed `batch` | both | model reload | wired | none |
-| `model_fit.cache_type_k`<br>`model_fit.cache_type_v` | enum (dtype) | `auto`, `f32`, `f16` (default), `bf16`, `q8_0`, `q4_0`, `q4_1`, `iq4_nl`, `q5_0`, `q5_1`; explicit value overrides `kv_cache_policy` | both | model reload | wired | none |
-| `model_fit.kv_cache_policy` | enum | `auto`, `quality`, `balanced`, `saver`; expands into cache dtypes | both | model reload | wired | none |
+| `model_fit.cache_type_k`<br>`model_fit.cache_type_v` | enum (dtype) | `auto` (default) follows package-validated publisher KV metadata, then publisher compute dtype, then F16; explicit schema values are `f16`, `f32`, `bf16`, `q8_0`, `q4_0`, `q4_1`, `iq4_nl`, `q5_0`, and `q5_1`, gated by runtime support | both | model reload | wired | none |
 | `model_fit.kv_offload` | bool-or-`auto` | `auto` | both | model reload | wired | none |
 | `model_fit.kv_unified` | bool-or-`auto` | `auto` | both | model reload | wired (recurrent/hybrid architectures still force this true natively) | none |
-| `model_fit.cache_ram_mib` | integer | unset (no cap) | both | model reload | unwired (any positive value fails at model load) | none |
-| `model_fit.cache_idle_slots` | integer | unset (unbounded) | both | model reload | wired | none |
+| `model_fit.cache_ram_mib` | integer | `0`/unset = host-RAM L2 disabled | both | model reload | wired; requires prefix caching and active L3 | none |
+| `model_fit.cache_idle_slots` | integer | unset uses the runtime lane count; `0` drops every reset lane, positive values cap retained idle sessions | both | model reload | wired | none |
 | `model_fit.prompt_cache` | bool-or-`auto` | `auto` | both | model reload | wired | none |
-| `model_fit.prefix_cache.enabled` | boolean | unset (disabled) | both | model reload | wired | none |
+| `model_fit.prefix_cache.enabled` | boolean | unset uses family defaults; `false` disables | both | model reload | wired | none |
 | `model_fit.prefix_cache.max_entries` | integer | runtime default | both | model reload | wired | none |
 | `model_fit.prefix_cache.max_bytes` | integer | `0`/unset = no cap | both | model reload | wired | none |
 | `model_fit.prefix_cache.min_tokens` | integer | runtime default | both | model reload | wired | none |
@@ -168,6 +201,9 @@ for the activity policy and privacy boundary.
 Missing TOML for this group: GGUF metadata `kv_overrides`. There is no
 schema key for it yet; do not expect an override path until a later PR adds
 one.
+
+See [KV Caching](/docs/pages/kv-caching/) for the default behavior and common
+configuration recipes.
 
 ## Group 4: device selection, GPU offload, multi-GPU, CPU MoE, and loading behavior
 
@@ -215,6 +251,7 @@ per-tensor device overrides. None of these has a schema key yet.
 |---|---|---|---|---|---|---|
 | `throughput.parallel` | integer | `1` | both | model reload | wired | `--parallel` |
 | `throughput.continuous_batching` | bool-or-`auto` | `auto` | both | model reload | wired (disabled mode limits scheduler iterations to one active request; enabled/auto uses all configured lanes) | none |
+| `throughput.pipeline_decode_groups` | integer | `1` (no grouping); a count of at least 1 | both | model reload | wired (splits each coalesced decode wave into this many groups so a pipelined split keeps more than one batch in flight; `SKIPPY_PIPELINE_DECODE_GROUPS` still overrides it for benchmarking) | none |
 | `throughput.threads` | integer | `0` = auto from host CPU count | both | model reload | wired | `--threads` |
 | `throughput.threads_batch` | integer | `0` = defaults to `threads` | both | model reload | wired | none |
 | `throughput.priority` | integer-or-string | unsupported | both | not applicable | rejected (no model-scoped scheduling or OS-priority consumer) | none |
@@ -269,11 +306,11 @@ configuration should use typed per-model `topology`; explicit `--model` and
 | `speculative.ngram_min`<br>`speculative.ngram_max` | integer | required for a direct N-gram plan; `0 < min <= max` | both | model reload | wired | none |
 | `speculative.ngram_proposer` | enum | `cache` (default), `suffix` | both | model reload | wired | none |
 | `speculative.ngram_max_proposal_tokens` | integer | N-gram maximum | both | model reload | wired | none |
-| `speculative.ngram_fallback` | string | `none` (default), `draft`; `draft` requires an N-gram proposer, a configured draft model, and pipeline depth greater than one | both | model reload | wired | none |
+| `speculative.ngram_fallback` | string | `none` (default), `draft`; `draft` requires an N-gram proposer, a configured draft model, and pipeline depth greater than one | both | model reload | wired | `--speculative-ngram-fallback` |
 | `speculative.extension_max_tokens` | integer | N-gram output budget | both | model reload | wired (requires native MTP plus an N-gram proposer) | none |
 | `speculative.native_mtp_reject_cooldown_tokens`<br>`speculative.native_mtp_suppress_cooldown_drafts`<br>`speculative.native_mtp_suppress_cooldown_draft_limit` | integer / boolean | runtime defaults | both | model reload | wired | none |
 | `speculative.verify_window_min_tokens`<br>`speculative.verify_window_max_tokens`<br>`speculative.verify_window_pipeline_depth` | integer | package policy or runtime defaults; `min <= max` | both | model reload | wired | none |
-| `speculative.verify_window_runahead_tokens` | integer | `0` (fixed-depth admission); `0..=4096`, where a positive budget admits verify windows by speculative-token budget instead of a fixed window count | both | model reload | wired (capped by the native checkpoint-retention bound of 64 windows) | none |
+| `speculative.verify_window_runahead_tokens` | integer | `0` (fixed-depth admission); `0..=4096`, where a positive budget admits verify windows by speculative-token budget instead of a fixed window count | both | model reload | wired (capped by the native checkpoint-retention bound of 64 windows) | `--speculative-verify-window-runahead-tokens` |
 | `speculative.spec_default` | bool-or-`auto` | `auto` | both | model reload | wired (`false` disables automatic speculation; `true`, `auto`, and omission enable supported automatic defaults) | none |
 
 ## Group 8: sampling, chat templates, reasoning, and request defaults
@@ -295,7 +332,7 @@ are applied by the embedded OpenAI frontend before prompt rendering.
 | `request_defaults.top_nsigma` | float | backend range | both | request-time | wired | none |
 | `request_defaults.dynatemp_range`<br>`request_defaults.dynatemp_exponent` | float | `>= 0.0` | both | request-time | wired | none |
 | `request_defaults.repeat_penalty` | float | `>= 0.0` | both | request-time | wired | none |
-| `request_defaults.repeat_last_n` | integer | `>= -1` | both | request-time | wired | none |
+| `request_defaults.repeat_last_n` | integer | `>= 0`, default `64`; legacy `-1` uses the default | both | request-time | wired | none |
 | `request_defaults.presence_penalty`<br>`request_defaults.frequency_penalty` | float | backend range | both | request-time | wired | none |
 | `request_defaults.dry` | object | typed multiplier, base, length, window, and sequence breakers | both | request-time | wired | none |
 | `request_defaults.xtc` | object | probability and threshold | both | request-time | wired | none |
@@ -340,6 +377,8 @@ sampling at the backend when it selects mode `1` or `2`.
 | `plugin.<name>.name` | string | required | plugin entry | plugin process restart | wired | none |
 | `plugin.<name>.enabled` | boolean | `true` | plugin entry | plugin process restart | wired | none |
 | `plugin.<name>.web_ui_enabled` | boolean | unset (follows the plugin's declared default) | plugin entry | plugin process restart | wired | none |
+| `plugin.<name>.web_ui_primary_tab` | boolean | unset (`false`; primary placement stays off until explicitly enabled) | plugin entry | plugin process restart | wired | none |
+| `plugin.<name>.allow_peer_blocks` | boolean | unset (`false`; the plugin's peer block requests are refused until explicitly enabled) | plugin entry | applies dynamically | wired | none |
 | `plugin.<name>.command` | string | required unless `url` is set | plugin entry | plugin process restart | wired | none |
 | `plugin.<name>.args` | array of string | `[]` | plugin entry | plugin process restart | wired | none |
 | `plugin.<name>.url` | URL | unset | plugin entry | plugin process restart | wired for HTTP(S) adapter URLs; `tcp://` control is rejected because no authenticated capability handshake exists | none |

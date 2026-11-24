@@ -9,9 +9,13 @@ use clap::{CommandFactory, Parser};
 
 mod commands;
 
-pub use mesh_llm_host_runtime::*;
-
 pub async fn run_main() -> i32 {
+    // This binary is what links the payments engine; the host only names
+    // the `payments.v1` seam.
+    #[cfg(feature = "payments")]
+    mesh_llm_host_runtime::install_payments_engine(Arc::new(
+        mesh_llm_payments::plugin_server::EngineProvider,
+    ));
     match run_cli_entrypoint().await {
         Ok(()) => 0,
         Err(err) => {
@@ -315,6 +319,7 @@ fn parse_failure_family(
             "runtime" | "load" | "unload" | "drop" | "status" | "stop" => {
                 Some(CliCommandFamily::Runtime)
             }
+            "wallet" => Some(CliCommandFamily::Wallet),
             "config" => Some(CliCommandFamily::Configuration),
             "doctor" => Some(CliCommandFamily::Diagnostics),
             "discover" => Some(CliCommandFamily::Discovery),
@@ -500,6 +505,7 @@ fn runtime_options_from_cli(cli: mesh_llm_cli::Cli) -> mesh_llm_host_runtime::Ru
         release_signer_key: cli.release_signer_key,
         name: cli.name,
         plugin: cli.plugin,
+        plugin_args: cli.plugin_args,
         auto_update: cli.auto_update,
         command_is_update: matches!(cli.command, Some(mesh_llm_cli::Command::Update { .. })),
         command_uses_machine_output: command_uses_machine_output(cli.command.as_ref()),
@@ -529,6 +535,9 @@ fn runtime_options_from_cli(cli: mesh_llm_cli::Cli) -> mesh_llm_host_runtime::Ru
         nostr_relay: cli.nostr_relay,
         no_console: cli.no_console,
         config: cli.config,
+        kv_cache_disk: cli.kv_cache_disk,
+        kv_cache_disk_dir: cli.kv_cache_disk_dir,
+        kv_cache_min_free: cli.kv_cache_min_free,
         owner_key: cli.owner_key,
         control_bind: cli.control_bind,
         control_advertise_addr: cli.control_advertise_addr,
@@ -537,6 +546,7 @@ fn runtime_options_from_cli(cli: mesh_llm_cli::Cli) -> mesh_llm_host_runtime::Ru
         trust_policy: cli.trust_policy.map(map_trust_policy),
         trust_owner: cli.trust_owner,
         nostr_discovery: cli.nostr_discovery,
+        no_default_plugins: cli.no_default_plugins,
         audit_log_path: cli.audit_log_path,
         audit_log_format: cli.audit_log_format,
         audit_log_level: cli.audit_log_level,
@@ -570,6 +580,10 @@ fn speculative_overrides_from_cli(
     overrides.verify_window_min_tokens = cli.speculative_verify_window_min_tokens;
     overrides.verify_window_max_tokens = cli.speculative_verify_window_max_tokens;
     overrides.verify_window_pipeline_depth = cli.speculative_verify_window_pipeline_depth;
+    overrides.verify_window_runahead_tokens = cli.speculative_verify_window_runahead_tokens;
+    overrides.ngram_fallback = cli
+        .speculative_ngram_fallback
+        .map(|fallback| fallback.as_str().to_string());
     (overrides != Default::default()).then_some(overrides)
 }
 

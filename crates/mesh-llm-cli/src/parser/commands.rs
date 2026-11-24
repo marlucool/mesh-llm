@@ -417,6 +417,26 @@ impl SpeculativeNgramProposerCli {
     }
 }
 
+/// What to propose from when the N-gram proposer has no candidates.
+///
+/// `none` is spelled out rather than left implicit so a command line can switch
+/// the fallback back off when the config file or model defaults turned it on.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum SpeculativeNgramFallbackCli {
+    Draft,
+    #[value(name = "none")]
+    Off,
+}
+
+impl SpeculativeNgramFallbackCli {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Off => "none",
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "mesh-llm",
@@ -607,6 +627,16 @@ pub struct Cli {
     #[arg(long, hide = true)]
     pub plugin: Option<String>,
 
+    /// Internal: one argument for the built-in plugin run by `--plugin`,
+    /// taken from its `[[plugin]]` stanza's `args`. Repeated in order.
+    #[arg(
+        long = "plugin-arg",
+        hide = true,
+        requires = "plugin",
+        allow_hyphen_values = true
+    )]
+    pub plugin_args: Vec<String>,
+
     /// Update mesh-llm before continuing for release-bundle installs if a newer bundled release is available.
     #[arg(long, global = true)]
     pub auto_update: bool,
@@ -667,6 +697,16 @@ pub struct Cli {
     /// Number of in-flight pipelined verify windows.
     #[arg(long, hide = true)]
     pub speculative_verify_window_pipeline_depth: Option<u32>,
+
+    /// Admit pipelined verify windows by speculative-token budget instead of a
+    /// fixed depth. 0 keeps fixed-depth admission.
+    #[arg(long, hide = true)]
+    pub speculative_verify_window_runahead_tokens: Option<u32>,
+
+    /// Propose from the draft model when the N-gram proposer misses
+    /// (`draft` or `none`). Requires a draft model and pipeline depth > 1.
+    #[arg(long, hide = true, value_enum)]
+    pub speculative_ngram_fallback: Option<SpeculativeNgramFallbackCli>,
 
     /// Draft model for speculative decoding.
     #[arg(long, hide = true)]
@@ -777,6 +817,18 @@ pub struct Cli {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
+    /// Node-local disk prompt cache: off, auto, or an explicit IEC size such as 32GiB.
+    #[arg(long, value_name = "off|auto|SIZE")]
+    pub kv_cache_disk: Option<String>,
+
+    /// Absolute node-local disk prompt-cache directory.
+    #[arg(long, value_name = "ABSOLUTE_PATH")]
+    pub kv_cache_disk_dir: Option<PathBuf>,
+
+    /// Minimum free storage to preserve, with an IEC suffix such as 16GiB.
+    #[arg(long, value_name = "SIZE")]
+    pub kv_cache_min_free: Option<String>,
+
     /// Path to the owner keystore used to attest this node.
     #[arg(long)]
     pub owner_key: Option<PathBuf>,
@@ -808,10 +860,22 @@ pub struct Cli {
     /// Internal: set when this node joined via Nostr discovery (not --join).
     #[arg(skip)]
     pub nostr_discovery: bool,
+
+    /// Don't install the default plugins on first run.
+    /// Same as MESH_LLM_NO_DEFAULT_PLUGINS=1.
+    #[arg(long)]
+    pub no_default_plugins: bool,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Manage the local mainnet Lightning wallet.
+    Wallet {
+        #[arg(long, default_value_t = 3131)]
+        port: u16,
+        #[command(subcommand)]
+        command: crate::wallet::WalletCommand,
+    },
     /// Serve local models and join or publish a mesh.
     #[command(visible_alias = "start")]
     Serve,
@@ -864,6 +928,12 @@ pub enum Command {
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
+    },
+    /// Inspect and manage the node-local durable prompt cache.
+    #[command(name = "kv-cache")]
+    KvCache {
+        #[command(subcommand)]
+        command: KvCacheCommand,
     },
     /// Inspect or change anonymous usage reporting.
     Analytics {
@@ -1152,6 +1222,53 @@ pub enum AnalyticsCommand {
     Enable,
     /// Turn usage reporting off by writing `[analytics] enabled = false`.
     Disable,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum KvCacheCommand {
+    /// Show the configured and effective cache state.
+    Status {
+        /// Authenticated owner-control endpoint; repeat for multiple owned nodes.
+        #[arg(long = "endpoint")]
+        endpoints: Vec<String>,
+        #[arg(long, default_value = "3131")]
+        port: u16,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Evict least-recently-used inactive entries.
+    Prune {
+        /// Optional target size with an IEC suffix (for example 16GiB).
+        #[arg(long)]
+        target: Option<String>,
+        /// Exact numerical model identity; display names are not accepted.
+        #[arg(long)]
+        model_identity: Option<String>,
+        #[arg(long)]
+        yes: bool,
+        /// Authenticated owner-control endpoint; repeat for multiple owned nodes.
+        #[arg(long = "endpoint")]
+        endpoints: Vec<String>,
+        #[arg(long, default_value = "3131")]
+        port: u16,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Clear inactive entries while inference falls back to cold prefill.
+    Clear {
+        /// Exact numerical model identity; omit to clear the full root.
+        #[arg(long)]
+        model_identity: Option<String>,
+        #[arg(long)]
+        yes: bool,
+        /// Authenticated owner-control endpoint; repeat for multiple owned nodes.
+        #[arg(long = "endpoint")]
+        endpoints: Vec<String>,
+        #[arg(long, default_value = "3131")]
+        port: u16,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

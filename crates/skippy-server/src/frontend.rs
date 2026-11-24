@@ -8,6 +8,7 @@ mod embedded_generation;
 mod generation;
 mod generation_commit_batcher;
 mod generation_flow;
+pub mod generation_gate;
 mod generation_receipt;
 mod guardrails;
 pub(crate) mod iteration_scheduler;
@@ -25,6 +26,7 @@ mod request;
 mod sampling_cache_key;
 mod speculative;
 mod system_one;
+mod token_counting;
 mod tool_emulation;
 mod util;
 
@@ -69,6 +71,7 @@ pub use self::speculative::{
     NativeMtpProposalConfig, NgramExtensionConfig, NgramProposalConfig, NgramProposerKind,
     SpeculativeDecodeConfig, VerifyWindowConfig,
 };
+pub use self::system_one::LayaSystemOneBackend;
 
 #[cfg(test)]
 mod tests;

@@ -14,8 +14,8 @@ Shared default settings applied to every model. Individual model entries can ove
 ctx_size                = 0              # Context window (0 = auto)
 batch                   = 0              # Batch size (0 = auto)
 ubatch                  = 0              # Micro-batch size (0 = auto)
-cache_type_k            = "f16"          # Key cache dtype
-cache_type_v            = "f16"          # Value cache dtype
+cache_type_k            = "auto"         # Key cache dtype (publisher metadata, then F16)
+cache_type_v            = "auto"         # Value cache dtype (publisher metadata, then F16)
 kv_offload              = "auto"        # KV-cache offload policy
 prompt_cache            = "auto"        # Prompt-cache policy
 flash_attention         = "auto"        # Flash-attention policy
@@ -77,7 +77,7 @@ typical_p     = 0.0                      # Typical sampling
 top_nsigma    = -1.0                     # Top-n-sigma filtering (-1 = disabled)
 dynatemp_range = 0.0                     # Dynamic temperature range
 dynatemp_exponent = 1.0                  # Dynamic temperature exponent
-repeat_last_n = -1                       # Repetition window (-1 = context size)
+repeat_last_n = 64                       # Repetition window in tokens (0 = disabled)
 mirostat_mode = "disabled"               # "disabled", 1, or 2
 mirostat_entropy = 5.0                    # Mirostat target entropy
 mirostat_learning_rate = 0.1              # Mirostat learning rate
@@ -100,7 +100,7 @@ skip_chat_parsing = false                 # Return raw template output metadata
 multiplier = 0.0                          # 0 = disabled
 base = 1.75
 allowed_length = 2
-penalty_last_n = -1
+penalty_last_n = 64                       # Window in tokens (0 = disabled)
 sequence_breakers = ["\n", ":", "\"", "*"]
 
 [defaults.request_defaults.xtc]

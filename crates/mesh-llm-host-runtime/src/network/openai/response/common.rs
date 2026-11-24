@@ -24,7 +24,13 @@ pub(in crate::network::openai::response) fn sse_data_frame_is_openai_error(data:
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::network::openai) struct RouteAttemptLoggingContext<'a> {
+pub(crate) struct RouteAttemptLoggingContext<'a> {
+    // Populated for observability on every route attempt but only consumed by
+    // the paid-settlement path. Gating the field would cascade cfgs through
+    // ~30 ingress/transport call sites, so it stays present and is simply
+    // unread when wallets are compiled out.
+    #[cfg_attr(not(feature = "payments"), allow(dead_code))]
+    pub(in crate::network::openai) exchange_id: Option<&'a str>,
     pub(in crate::network::openai) request_id: RequestId,
     pub(in crate::network::openai) retry_policy: ResponseRetryPolicy,
     pub(in crate::network::openai) response_adapter: ResponseAdapter,
@@ -53,6 +59,33 @@ pub(in crate::network::openai) struct RouteAttemptLoggingContext<'a> {
 pub(crate) struct PeerCapsuleIdSink(std::sync::Mutex<Option<String>>);
 
 impl PeerCapsuleIdSink {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(in crate::network::openai) fn set(&self, value: String) {
+        *self.0.lock().unwrap() = Some(value);
+    }
+
+    pub(crate) fn take(&self) -> Option<String> {
+        self.0.lock().unwrap().take()
+    }
+}
+
+/// A single-slot side channel for the hex-encoded `EndpointId` of the peer that
+/// actually delivered a routed attempt. Same threading rationale as
+/// [`PeerCapsuleIdSink`]: `RouteDispatchOutcome` is `Copy` and built on paths
+/// that have nothing to do with which peer served, so the served peer id rides
+/// this sink rather than being folded into the outcome.
+///
+/// Set where the delivered attempt returns and its chosen target is in scope,
+/// so a request that never named an `x-mesh-target` still learns which peer
+/// served it. Never invents a value: stays `None` when nothing was served or
+/// the delivering target was this node's own local backend.
+#[derive(Default)]
+pub(crate) struct ServedByNodeIdSink(std::sync::Mutex<Option<String>>);
+
+impl ServedByNodeIdSink {
     pub(crate) fn new() -> Self {
         Self::default()
     }

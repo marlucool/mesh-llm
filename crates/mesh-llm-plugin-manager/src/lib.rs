@@ -1,6 +1,7 @@
 mod archive;
 pub mod asset;
 pub mod catalog;
+pub mod defaults;
 pub mod github;
 pub mod install;
 pub mod skills;
@@ -9,11 +10,11 @@ pub mod store;
 pub mod target;
 
 pub use asset::{AssetMatchKind, PluginAsset, select_plugin_asset};
-pub use catalog::{CatalogEntry, PluginCatalog};
+pub use catalog::{CatalogEntry, PinnedRelease, PluginCatalog};
 pub use github::{GitHubRelease, GitHubReleaseAsset, GitHubReleaseClient};
 pub use install::{
     InstallOutcome, PluginInstallOptions, PluginProgressEvent, PluginProgressReporter,
-    install_plugin, update_plugin,
+    install_default_plugin, install_plugin, update_plugin,
 };
 pub use mesh_llm_skills::{
     SkillAgent, SkillInstallAction, SkillInstallReport, SkillInstallStatus, SkillPackage,

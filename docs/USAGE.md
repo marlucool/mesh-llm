@@ -444,7 +444,7 @@ parallel   = 2        # total parallel inference slots across all models
 
 [owner_control]
 bind           = "0.0.0.0:7447"          # QUIC listen address
-advertise_addr = "203.0.113.10:18443"    # address announced to peers
+advertise_addr = "203.0.113.10:7447"     # address announced to peers (same port as bind)
 
 # ---------------------------------------------------------------------------
 # Telemetry
@@ -465,15 +465,10 @@ batch            = 512           # n_batch — prompt-processing chunk
 ubatch           = 128           # n_ubatch — micro-batch within a batch
 cache_type_k     = "auto"        # KV key dtype: auto f16 f32 bf16 q8_0 q4_0 …
 cache_type_v     = "auto"        # KV value dtype (same enum)
-flash_attention  = "auto"        # auto on off
-kv_cache_policy  = "balanced"    # macro preset: auto quality balanced saver
-                                 #   quality  → f16/f16, no forced RAM cap
-                                 #   balanced → preserve runtime defaults
-                                 #   saver    → low-memory dtypes + offload
-                                 # explicit cache_type_k/v always wins over preset
+flash_attention  = "auto"        # auto enabled disabled
 kv_offload       = "auto"        # bool or "auto" — KV residency / offload policy
 kv_unified       = "auto"        # bool or "auto" — unified KV layout (schema-reserved)
-cache_ram_mib    = 0             # byte cap for KV cache in MiB; 0 = no cap (schema-reserved)
+cache_ram_mib    = 0             # host-RAM L2 budget in MiB; 0 = disabled; requires L3
 cache_idle_slots = 0             # idle slot retention count (schema-reserved)
 prompt_cache     = "auto"        # bool or "auto" — reuse previous prompt KV
 swa_full         = false         # sliding-window attention (model-family specific)
@@ -659,7 +654,7 @@ ignore_eos = false
 # Reasoning (for thinking models)
 reasoning_format  = "auto"   # auto none deepseek deepseek-legacy hidden
 reasoning_enabled = "auto"   # bool or "auto" / "on" / "off"
-reasoning_budget  = "auto"   # integer token budget, or "auto"
+reasoning_budget  = "auto"   # integer, low/medium/high, auto, or unrestricted
 
 # Chat template (leave unset to use model's embedded template)
 # chat_template      = "chatml"
@@ -675,6 +670,17 @@ reasoning_budget  = "auto"   # integer token budget, or "auto"
 #   backend_sampling    — raw backend sampling passthrough
 #   grammar, json_schema, logprobs
 #   prefill_assistant, chat_template_kwargs
+
+# When max_tokens remains unset, Mesh caps output at min(8192, context left
+# after the prompt). For reasoning-capable chat templates, an omitted/auto
+# reasoning budget resolves to min(4096, half the effective output cap).
+# low/medium/high map to 1024/4096/8192 and also clamp to half the output cap.
+# Numeric budgets are explicit; 0 ends thinking immediately and unrestricted
+# removes only the reasoning cap. Explicit request fields override model config,
+# which overrides package profiles, which override these fallbacks.
+# Generation phase diagnostics report the selected package profile and a
+# generation_default_sources map labeling every supported field as request,
+# deployment, package, or fallback.
 
 # --- Multimodal ----------------------------------------------------------
 [defaults.multimodal]
@@ -725,8 +731,7 @@ batch           = 1024
 ubatch           = 256
 cache_type_k    = "f16"
 cache_type_v    = "f16"
-kv_cache_policy = "quality"    # overrides global "balanced"
-flash_attention  = "on"
+flash_attention  = "enabled"
 prompt_cache     = true
 
 [models.model_fit.prefix_cache]
@@ -836,7 +841,9 @@ fit_target_mib = 20480
 
 [models.model_fit]
 ctx_size        = 8192
-kv_cache_policy = "saver"
+cache_type_k    = "q8_0"
+cache_type_v    = "q8_0"
+kv_offload      = true
 
 [models.throughput]
 parallel = 2
@@ -1052,6 +1059,60 @@ omitting the extension controls. Layer packages may declare `ngram-suffix` as
 a request-local proposer and standalone strategy. See
 [Suffix N-gram Proposer](skippy/SUFFIX_NGRAM_PROPOSER.md) for the lookup
 contract, telemetry, and benchmark requirements.
+
+### Run-ahead admission
+
+`verify_window_pipeline_depth` admits a fixed number of verify windows. Setting
+`verify_window_runahead_tokens` instead admits by speculative-token budget: the
+scheduler keeps dispatching while in-flight speculative tokens stay under the
+budget, bounded by the native checkpoint-retention limit of 64 windows. `0` keeps
+fixed-depth admission.
+
+```toml
+[models.speculative]
+strategy = "ngram-suffix"
+ngram_proposer = "suffix"
+ngram_min = 5
+ngram_max = 32
+ngram_max_proposal_tokens = 48
+verify_window_max_tokens = 32
+verify_window_runahead_tokens = 96
+```
+
+Run-ahead also enables stale-tail cancellation: on divergence the driver sends a
+discard range so buffered stale windows are answered without executing. Fixed
+depth pays that recovery cost instead, which is why a deeper fixed depth can
+measure *slower* than a shallower one.
+
+Command line: `--speculative-verify-window-runahead-tokens 96`.
+
+### Falling back to a draft model on an N-gram miss
+
+A proposer miss otherwise costs a full round trip per token, which dominates
+freeform text on high-latency links. `ngram_fallback = "draft"` proposes from the
+configured draft model when the N-gram proposer has no candidates.
+
+```toml
+[models.speculative]
+strategy = "ngram-suffix"
+ngram_proposer = "suffix"
+ngram_min = 5
+ngram_max = 32
+draft_model = "org/draft-GGUF:Q4_K_M"
+ngram_fallback = "draft"
+verify_window_pipeline_depth = 2
+```
+
+It requires an N-gram proposer, a configured draft model, and pipeline depth
+greater than one — the serial draft loop is authoritative at depth 1. Each of
+those is rejected at validation rather than starting cleanly with a fallback that
+never fires. `none` is the default.
+
+Command line: `--speculative-ngram-fallback draft`.
+
+Both settings are workload-sensitive. The N-gram proposers pay off on
+input-grounded output and can be a net loss on freeform prose, so measure the
+target workload rather than assuming an uplift.
 
 For package-authoring rules, see
 [Layer Package Repositories](specs/layer-package-repos.md#generation-defaults).

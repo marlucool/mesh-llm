@@ -50,8 +50,26 @@ pub struct MeshConfig {
     pub models: Vec<ModelConfigEntry>,
     #[serde(rename = "plugin", default)]
     pub plugins: Vec<PluginConfigEntry>,
+    #[serde(default, skip_serializing_if = "PaymentsConfig::is_default")]
+    pub payments: PaymentsConfig,
     #[serde(flatten, default)]
     pub extra: BTreeMap<String, toml::Value>,
+}
+
+/// `[payments]`: which wallet backs paid inference. Spending policy and
+/// prices live in the payment ledger, not here.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PaymentsConfig {
+    /// Plugin name of the `wallet.v1` provider to use. When unset the host
+    /// uses the only running wallet plugin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet: Option<String>,
+}
+
+impl PaymentsConfig {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -68,6 +86,12 @@ pub struct GpuConfig {
     pub assignment: GpuAssignment,
     #[serde(default)]
     pub parallel: Option<usize>,
+    /// Let the local fit and auto-join count system RAM as model capacity on
+    /// a host with accelerator memory. Off when unset: a model that only fits
+    /// by spilling into RAM decodes an order of magnitude slower. The
+    /// capacity advertised to the mesh never includes RAM either way.
+    #[serde(default)]
+    pub host_ram_offload: Option<bool>,
 }
 
 pub const DEFAULT_MODEL_TARGET_DEMAND_UPGRADE_MIN_REQUESTS: u64 = 2;
@@ -120,6 +144,9 @@ pub struct RuntimeConfig {
     pub reconcile_model_target_demand_upgrades: bool,
     #[serde(default)]
     pub native_runtime: NativeRuntimeConfig,
+    /// Node-wide resident and durable KV-cache policy.
+    #[serde(default)]
+    pub kv_cache: RuntimeKvCacheConfig,
     #[serde(default = "default_model_target_demand_upgrade_min_requests")]
     pub model_target_demand_upgrade_min_requests: u64,
     #[serde(default = "default_model_target_demand_upgrade_max_age_secs")]
@@ -141,6 +168,7 @@ impl Default for RuntimeConfig {
             reconcile_model_targets: false,
             reconcile_model_target_demand_upgrades: false,
             native_runtime: NativeRuntimeConfig::default(),
+            kv_cache: RuntimeKvCacheConfig::default(),
             model_target_demand_upgrade_min_requests:
                 DEFAULT_MODEL_TARGET_DEMAND_UPGRADE_MIN_REQUESTS,
             model_target_demand_upgrade_max_age_secs:
@@ -178,6 +206,62 @@ impl LifecycleLogParserMode {
             Self::Enabled => "enabled",
             Self::Disabled => "disabled",
         }
+    }
+}
+
+pub const DEFAULT_KV_DISK_MINIMUM_FREE_MIB: u64 = 16 * 1024;
+pub const MIN_KV_DISK_MINIMUM_FREE_MIB: u64 = 1024;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum KvDiskTierMode {
+    #[default]
+    Off,
+    Auto,
+    Fixed,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum KvDiskCodec {
+    #[default]
+    Native,
+    #[serde(rename = "cachegen")]
+    CacheGen,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RuntimeKvCacheConfig {
+    #[serde(default)]
+    pub disk: KvDiskTierConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct KvDiskTierConfig {
+    #[serde(default)]
+    pub mode: Option<KvDiskTierMode>,
+    /// Absolute node-local root. Absence resolves to `$MESH_LLM_HOME/kv-cache`.
+    #[serde(default)]
+    pub directory: Option<std::path::PathBuf>,
+    /// Hard whole-node cap, required only in fixed mode.
+    #[serde(default)]
+    pub budget_mib: Option<u64>,
+    #[serde(default)]
+    pub minimum_free_mib: Option<u64>,
+    /// KV representation persisted in the disk tier. CacheGen remains an
+    /// explicit opt-in while backend/dtype qualification is incomplete.
+    #[serde(default)]
+    pub codec: KvDiskCodec,
+}
+
+impl KvDiskTierConfig {
+    pub fn effective_mode(&self) -> KvDiskTierMode {
+        self.mode.unwrap_or_default()
+    }
+
+    pub fn effective_minimum_free_mib(&self) -> u64 {
+        self.minimum_free_mib
+            .unwrap_or(DEFAULT_KV_DISK_MINIMUM_FREE_MIB)
     }
 }
 
@@ -342,8 +426,6 @@ pub struct ModelFitConfig {
     #[serde(default)]
     pub cache_type_v: Option<String>,
     #[serde(default)]
-    pub kv_cache_policy: Option<String>,
-    #[serde(default)]
     pub kv_offload: Option<BoolOrAuto>,
     #[serde(default)]
     pub kv_unified: Option<BoolOrAuto>,
@@ -474,6 +556,11 @@ pub struct ThroughputConfig {
     pub parallel: Option<usize>,
     #[serde(default)]
     pub continuous_batching: Option<BoolOrAuto>,
+    /// Split each coalesced decode wave into this many pipeline groups, so a
+    /// pipelined split keeps more than one batch in flight: group A computes on
+    /// one stage while group B computes on the next. `1` disables grouping.
+    #[serde(default)]
+    pub pipeline_decode_groups: Option<u32>,
     #[serde(default)]
     pub threads: Option<usize>,
     #[serde(default)]
@@ -1067,6 +1154,8 @@ struct RawMeshConfig {
     models: Vec<ModelConfigEntry>,
     #[serde(rename = "plugin", default)]
     plugins: Vec<PluginConfigEntry>,
+    #[serde(default)]
+    payments: PaymentsConfig,
     #[serde(flatten, default)]
     extra: BTreeMap<String, toml::Value>,
 }
@@ -1170,6 +1259,7 @@ impl<'de> Deserialize<'de> for MeshConfig {
             runtime: raw.runtime,
             models: raw.models,
             plugins: raw.plugins,
+            payments: raw.payments,
             extra: raw.extra,
         })
     }
@@ -1627,6 +1717,12 @@ pub struct PluginConfigEntry {
     pub enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web_ui_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_ui_primary_tab: Option<bool>,
+    /// Whether this plugin may ask the host to block or unblock routing to a
+    /// peer. Host-owned; off unless the operator turns it on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_peer_blocks: Option<bool>,
     #[serde(default)]
     pub command: Option<String>,
     #[serde(default)]
@@ -1660,6 +1756,20 @@ impl PluginWebUiPreference {
 impl PluginConfigEntry {
     pub const fn web_ui_preference(&self, declares_web_ui: bool) -> PluginWebUiPreference {
         PluginWebUiPreference::resolve(self.web_ui_enabled, declares_web_ui)
+    }
+
+    /// Off unless the operator has explicitly opted in. Unlike
+    /// `web_ui_preference`, this never gates the web UI's availability —
+    /// it only asks whether a manifest page that requests
+    /// `placement = "primary"` should be promoted.
+    pub const fn web_ui_primary_tab_preference(&self) -> bool {
+        matches!(self.web_ui_primary_tab, Some(true))
+    }
+
+    /// Off unless the operator has explicitly opted in: only then may the
+    /// plugin request peer routing blocks. Operator blocks never need it.
+    pub const fn peer_blocks_allowed(&self) -> bool {
+        matches!(self.allow_peer_blocks, Some(true))
     }
 }
 

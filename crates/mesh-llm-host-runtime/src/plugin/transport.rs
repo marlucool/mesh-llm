@@ -43,6 +43,8 @@ fn plugin_mesh_stream_error(message: impl Into<String>) -> super::proto::ErrorRe
 pub(crate) enum LocalStream {
     #[cfg(test)]
     Tcp(tokio::net::TcpStream),
+    /// In-memory pipe to a builtin plugin running as a task in this process.
+    Memory(tokio::io::DuplexStream),
     #[cfg(unix)]
     Unix(tokio::net::UnixStream),
     #[cfg(windows)]
@@ -129,6 +131,17 @@ pub(crate) const CONNECTION_LOOP: ConnectionLoopFn =
                                     };
                                     forward_plugin_mesh_stream_request(
                                         plugin_id,
+                                        request_id,
+                                        request,
+                                        mesh_tx.clone(),
+                                        outbound_tx.clone(),
+                                    );
+                                }
+                                Some(super::proto::envelope::Payload::PeerBlockRequest(request)) => {
+                                    // The requester is the connection's own name,
+                                    // so one plugin cannot act as another.
+                                    forward_plugin_peer_block_request(
+                                        plugin_name.clone(),
                                         request_id,
                                         request,
                                         mesh_tx.clone(),
@@ -257,6 +270,7 @@ impl LocalStream {
         match self {
             #[cfg(test)]
             LocalStream::Tcp(stream) => stream.write_all(bytes).await?,
+            LocalStream::Memory(stream) => stream.write_all(bytes).await?,
             #[cfg(unix)]
             LocalStream::Unix(stream) => stream.write_all(bytes).await?,
             #[cfg(windows)]
@@ -271,6 +285,7 @@ impl LocalStream {
         match self {
             #[cfg(test)]
             LocalStream::Tcp(stream) => stream.shutdown().await?,
+            LocalStream::Memory(stream) => stream.shutdown().await?,
             #[cfg(unix)]
             LocalStream::Unix(stream) => stream.shutdown().await?,
             #[cfg(windows)]
@@ -285,6 +300,7 @@ impl LocalStream {
         let read = match self {
             #[cfg(test)]
             LocalStream::Tcp(stream) => stream.read(bytes).await?,
+            LocalStream::Memory(stream) => stream.read(bytes).await?,
             #[cfg(unix)]
             LocalStream::Unix(stream) => stream.read(bytes).await?,
             #[cfg(windows)]
@@ -299,6 +315,9 @@ impl LocalStream {
         match self {
             #[cfg(test)]
             LocalStream::Tcp(stream) => {
+                let _ = stream.read_exact(bytes).await?;
+            }
+            LocalStream::Memory(stream) => {
                 let _ = stream.read_exact(bytes).await?;
             }
             #[cfg(unix)]
@@ -639,6 +658,53 @@ fn forward_plugin_mesh_stream_request(
             Ok(Err(error)) | Err(error) => super::proto::envelope::Payload::ErrorResponse(error),
         };
 
+        let _ = outbound_tx
+            .send(super::proto::Envelope {
+                protocol_version: PROTOCOL_VERSION,
+                plugin_id: plugin_name,
+                request_id,
+                payload: Some(payload),
+            })
+            .await;
+    });
+}
+
+fn forward_plugin_peer_block_request(
+    plugin_name: String,
+    request_id: u64,
+    request: super::proto::PeerBlockRequest,
+    mesh_tx: mpsc::Sender<PluginMeshEvent>,
+    outbound_tx: mpsc::Sender<super::proto::Envelope>,
+) {
+    tokio::spawn(async move {
+        let (response_tx, response_rx) = oneshot::channel();
+        let deadline = tokio::time::Instant::now() + PLUGIN_MESH_STREAM_RESPONSE_TIMEOUT;
+        let response = match tokio::time::timeout_at(
+            deadline,
+            mesh_tx.send(PluginMeshEvent::PeerBlock {
+                plugin_id: plugin_name.clone(),
+                request,
+                response_tx,
+            }),
+        )
+        .await
+        {
+            Ok(Ok(())) => match tokio::time::timeout_at(deadline, response_rx).await {
+                Ok(Ok(response)) => response,
+                Ok(Err(_)) => Err(plugin_mesh_stream_error(
+                    "Peer block handler dropped the response",
+                )),
+                Err(_) => Err(plugin_mesh_stream_error("Peer block request timed out")),
+            },
+            Ok(Err(_)) => Err(plugin_mesh_stream_error(
+                "Peer block handler is unavailable",
+            )),
+            Err(_) => Err(plugin_mesh_stream_error("Peer block request timed out")),
+        };
+        let payload = match response {
+            Ok(response) => super::proto::envelope::Payload::PeerBlockResponse(response),
+            Err(error) => super::proto::envelope::Payload::ErrorResponse(error),
+        };
         let _ = outbound_tx
             .send(super::proto::Envelope {
                 protocol_version: PROTOCOL_VERSION,

@@ -17,6 +17,33 @@ RESOLVER = ROOT / "scripts" / "resolve-test-model-manifest.py"
 
 
 class ModelArtifactRegistryTests(unittest.TestCase):
+    def test_generator_rejects_invalid_minimum_runner_memory(self) -> None:
+        registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+        row = next(row for row in registry["artifacts"] if "certification" in row)
+        for invalid in (192, 128.0, True, "256"):
+            with self.subTest(invalid=invalid):
+                row["certification"]["resources"]["minimum_runner_memory_gib"] = invalid
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    source = Path(temp_dir) / "registry.json"
+                    source.write_text(json.dumps(registry), encoding="utf-8")
+                    result = subprocess.run(
+                        [
+                            "python3",
+                            str(GENERATOR),
+                            "--registry",
+                            str(source),
+                            "--check",
+                        ],
+                        cwd=ROOT,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                self.assertEqual(2, result.returncode)
+                self.assertIn(
+                    "minimum_runner_memory_gib must be 128 or 256", result.stderr
+                )
+
     def test_generator_rejects_incompatible_workload_class_and_profile(self) -> None:
         """A recognized profile must also belong to the selected workload class."""
         registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
@@ -126,7 +153,7 @@ class ModelArtifactRegistryTests(unittest.TestCase):
                     cwd=ROOT, check=True, capture_output=True, text=True,
                 )
 
-    def test_product_smoke_manifest_is_the_pinned_dense_recurrent_pair(self) -> None:
+    def test_product_smoke_manifest_is_the_pinned_dense_recurrent_laya_set(self) -> None:
         manifest = json.loads(
             (MANIFESTS / "product-smoke.json").read_text(
                 encoding="utf-8"
@@ -136,7 +163,11 @@ class ModelArtifactRegistryTests(unittest.TestCase):
 
         self.assertEqual(
             set(artifacts),
-            {"smollm2-q8-inference", "family-granite-hybrid"},
+            {
+                "smollm2-q8-inference",
+                "family-granite-hybrid",
+                "family-laya-multilingual",
+            },
         )
         self.assertEqual(
             artifacts["smollm2-q8-inference"]["model_ref"],
@@ -145,6 +176,10 @@ class ModelArtifactRegistryTests(unittest.TestCase):
         self.assertEqual(
             artifacts["family-granite-hybrid"]["model_ref"],
             "ibm-granite/granite-4.0-h-350m-GGUF:Q4_K_M",
+        )
+        self.assertEqual(
+            artifacts["family-laya-multilingual"]["model_ref"],
+            "meshllm/laya-multilingual-F16-GGUF:F16",
         )
         for artifact in artifacts.values():
             self.assertEqual(len(artifact["files"]), 1)

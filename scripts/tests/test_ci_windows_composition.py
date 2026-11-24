@@ -1,15 +1,237 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
+import tempfile
 import tomllib
 import unittest
+
+import yaml
+
+from scripts.tests.test_plan_ci import PLANNER, fixture
 
 
 ROOT = Path(__file__).resolve().parents[2]
 ACTIONS = ROOT / ".github" / "actions"
+PLATFORM_CHECKS_WORKFLOW = ROOT / ".github" / "workflows" / "ci-platform-checks-slice.yml"
+RESOLVE_CARGO_PACKAGES = "Mesh-LLM/mesh-llm/.github/actions/resolve-cargo-packages"
 RELEASE_FOOTER_MANIFEST = ROOT / "crates" / "mesh-llm-release-footer" / "Cargo.toml"
 XTASK_MANIFEST = ROOT / "tools" / "xtask" / "Cargo.toml"
+
+
+def _unit_row_crates(platform: str) -> set[str]:
+    """Crates a platform's unit row runs, however the row resolves them.
+
+    The row no longer names a literal `foreach ($crate in '...', '...')` list:
+    each platform's owners come from the `crates:` inputs of the
+    `resolve-cargo-packages` steps that apply to that platform's unit check.
+    A step with no platform guard applies to both unit rows; a platform-guarded
+    step applies only to the named platform.
+    """
+    workflow = yaml.safe_load(PLATFORM_CHECKS_WORKFLOW.read_text(encoding="utf-8"))
+    crates: set[str] = set()
+    found = False
+    for step in workflow["jobs"]["platform_checks"]["steps"]:
+        if not str(step.get("uses", "")).startswith(RESOLVE_CARGO_PACKAGES + "@"):
+            continue
+        condition = str(step.get("if", ""))
+        if "kind == 'unit'" not in condition:
+            continue
+        if "platform == '" in condition and f"platform == '{platform}'" not in condition:
+            continue
+        crates.update(json.loads(step["with"]["crates"]))
+        found = True
+    if not found:
+        raise AssertionError(f"{platform} unit row no longer resolves any package owners")
+    return crates
+
+
+def _windows_unit_row_crates() -> set[str]:
+    """Crates the windows-unit row runs, across its shared and Windows inputs."""
+    return _unit_row_crates("windows")
+
+
+# Crates whose `src/` selects Windows- or Unix-specific code that no Windows
+# job compiles yet. Their suites have never run on the Windows runner, so
+# switching them on together would risk a red main for reasons unrelated to the
+# change under test. A crate leaves this list, for a platform-windows* crate
+# rule and the windows-unit row, once its suite is confirmed green there.
+WINDOWS_UNVERIFIED_CRATES = {
+    # Green on Windows, but each has an extracted successor in the Mesh/Skippy
+    # layout migration, so it is routed once the catalog carries successors.
+    "mesh-llm-hardware-profile",
+    "mesh-llm-native-runtime",
+    "model-hf",
+    "mesh-llm-routing",
+    "skippy-bench",
+    "skippy-model-package",
+    "skippy-quantize",
+    "skippy-runtime",
+    "skippy-server",
+    "xtask",
+}
+
+# Rust allows whitespace between a macro name and its `!`: `cfg ! (unix)`.
+CFG_OPEN = re.compile(r"\b(cfg_attr|cfg(?:\s*!)?)\s*\(")
+BARE_PLATFORM = re.compile(r"\b(?:windows|unix)\b")
+TARGET_OS = re.compile(r"\btarget_os\s*=")
+TARGET_FAMILY = re.compile(r"\btarget_family\s*=\s*\"(\d+)\"")
+RAW_STRING = re.compile(r"b?r(#*)\"")
+CHAR_LITERAL = re.compile(r"'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'")
+
+
+def _mask_rust_source(source: str) -> tuple[str, list[str]]:
+    """Drop comments and replace each string literal with `"<index>"`.
+
+    A cfg is then only found in code, never in a comment or a quoted example,
+    and a `target_os` value stays readable through the returned literals.
+    """
+    code: list[str] = []
+    literals: list[str] = []
+    index, length = 0, len(source)
+    while index < length:
+        if source.startswith("//", index):
+            end = source.find("\n", index)
+            index = length if end == -1 else end
+        elif source.startswith("/*", index):
+            depth, index = 1, index + 2
+            while index < length and depth:
+                if source.startswith("/*", index):
+                    depth, index = depth + 1, index + 2
+                elif source.startswith("*/", index):
+                    depth, index = depth - 1, index + 2
+                else:
+                    index += 1
+            code.append(" ")
+        elif (raw := RAW_STRING.match(source, index)) and (
+            index == 0 or not (source[index - 1].isalnum() or source[index - 1] == "_")
+        ):
+            closing = '"' + raw.group(1)
+            end = source.find(closing, raw.end())
+            end = length if end == -1 else end
+            literals.append(source[raw.end() : end])
+            code.append(f'"{len(literals) - 1}"')
+            index = end + len(closing)
+        elif source[index] == '"':
+            end = index + 1
+            while end < length and source[end] != '"':
+                end += 2 if source[end] == "\\" else 1
+            literals.append(source[index + 1 : end])
+            code.append(f'"{len(literals) - 1}"')
+            index = end + 1
+        elif (char := CHAR_LITERAL.match(source, index)) is not None:
+            code.append("' '")
+            index = char.end()
+        else:
+            code.append(source[index])
+            index += 1
+    return "".join(code), literals
+
+
+def _cfg_predicates(code: str) -> list[str]:
+    """The predicate of every `cfg(...)`, `cfg!(...)` and `cfg_attr(...)`.
+
+    Balanced, not up to the first `)`: in `cfg(all(not(test), windows))` the
+    platform predicate comes after a nested clause. For `cfg_attr` only the
+    part before the first top-level comma is a predicate; the rest is an
+    attribute such as `windows_subsystem = "windows"`.
+    """
+    predicates = []
+    for match in CFG_OPEN.finditer(code):
+        depth, index, cut = 1, match.end(), None
+        while index < len(code) and depth:
+            if code[index] == "(":
+                depth += 1
+            elif code[index] == ")":
+                depth -= 1
+            elif code[index] == "," and depth == 1 and cut is None:
+                cut = index
+            index += 1
+        end = index - 1
+        if match.group(1) == "cfg_attr" and cut is not None:
+            end = cut
+        predicates.append(code[match.end() : end])
+    return predicates
+
+
+def _selects_platform_code(source: str) -> bool:
+    """Whether a cfg predicate selects code by platform: a bare `windows` or
+    `unix`, any `target_os` (code for `linux` and `macos` alone may not build on
+    Windows), or a `target_family` of `windows` or `unix`. A
+    `feature = "windows"` is not a platform, and a cfg inside a comment or a
+    string is not code."""
+    code, literals = _mask_rust_source(source)
+    for predicate in _cfg_predicates(code):
+        if BARE_PLATFORM.search(predicate) or TARGET_OS.search(predicate):
+            return True
+        if any(literals[int(i)] in ("windows", "unix") for i in TARGET_FAMILY.findall(predicate)):
+            return True
+    return False
+
+
+def _workspace_crates(root: Path) -> dict[str, Path]:
+    """Package name to crate directory for every workspace member.
+
+    Reads the members from the root manifest rather than a fixed `crates/*`
+    layout, and the name from each crate's manifest, since a directory need
+    not match its package name.
+    """
+    workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+    crates: dict[str, Path] = {}
+    for member in workspace["workspace"]["members"]:
+        for crate_dir in sorted(root.glob(member)):
+            manifest = tomllib.loads((crate_dir / "Cargo.toml").read_text(encoding="utf-8"))
+            crates[manifest["package"]["name"]] = crate_dir
+    return crates
+
+
+def _cfg_divergent_crates(root: Path) -> set[str]:
+    """Workspace crates whose `src/` selects Windows- or Unix-specific code."""
+    divergent = set()
+    for name, crate_dir in _workspace_crates(root).items():
+        source_root = crate_dir / "src"
+        if not source_root.is_dir():
+            continue
+        if any(
+            _selects_platform_code(source.read_text(encoding="utf-8", errors="ignore"))
+            for source in source_root.rglob("*.rs")
+        ):
+            divergent.add(name)
+    return divergent
+
+
+def _windows_catalog_crates() -> set[str]:
+    """Crates a `platform-windows*` rule makes a Windows row *select*.
+
+    Row membership alone is not coverage. `mesh-llm-host-runtime` ran in the
+    windows-unit row while no catalog rule selected that row, so a change to it
+    planned no Windows work at all (#2073). A crate belongs here when its own
+    change, and not only the row's owner list, brings Windows in.
+    """
+    ownership = json.loads((ROOT / "ci" / "ownership.yml").read_text(encoding="utf-8"))
+    return {
+        crate
+        for rule in ownership["crate_rules"]
+        if rule["domain"].startswith("platform-windows")
+        for crate in rule["crates"]
+    }
+
+
+def _platform_windows_cfg_crates() -> set[str]:
+    """Crates the `platform-windows-cfg` rule routes to the Windows unit row."""
+    ownership = json.loads((ROOT / "ci" / "ownership.yml").read_text(encoding="utf-8"))
+    return {
+        crate
+        for rule in ownership["crate_rules"]
+        if rule["domain"] == "platform-windows-cfg"
+        for crate in rule["crates"]
+    }
+
+
+def _windows_routed_crates() -> set[str]:
+    """Crates a Windows job compiles: platform-windows* rules plus the unit row."""
+    return _windows_catalog_crates() | _windows_unit_row_crates()
 
 
 class CiWindowsCompositionTests(unittest.TestCase):
@@ -97,8 +319,8 @@ class CiWindowsCompositionTests(unittest.TestCase):
         cpu_routing = routing[: routing.index("WINDOWS_GPU_INPUTS=")]
         gpu_routing = routing[routing.index("WINDOWS_GPU_INPUTS=") :]
 
-        self.assertIn("^crates/mesh-llm-release-footer/", cpu_routing)
-        self.assertNotIn("^crates/mesh-llm-release-footer/", gpu_routing)
+        self.assertIn("^(mesh/|skippy/)?crates/mesh-llm-release-footer/", cpu_routing)
+        self.assertNotIn("^(mesh/|skippy/)?crates/mesh-llm-release-footer/", gpu_routing)
         self.assertIn("package-release", cpu_routing)
         self.assertIn("package-release", gpu_routing)
         for workflow in (
@@ -316,6 +538,215 @@ class CiWindowsCompositionTests(unittest.TestCase):
                             block,
                         )
             self.assertEqual(expected_counts, actual_counts)
+
+    def test_windows_unit_row_names_every_routed_crate(self) -> None:
+        """Routing a crate to windows-unit is only signal if the row names it."""
+        domain_crates = _platform_windows_cfg_crates()
+        self.assertTrue(domain_crates)
+        self.assertEqual(set(), domain_crates - _windows_unit_row_crates())
+
+    def test_windows_unit_row_routing_selects_the_row_for_every_catalog_crate(
+        self,
+    ) -> None:
+        """Naming a crate in the row is not coverage; its change must select it.
+
+        #2073 deleted 3,888 lines from shared host-runtime code and planned no
+        Windows work at all: `mesh-llm-host-runtime` was in the windows-unit
+        row's owner list, but no catalog rule selected that row for a change to
+        it, so the row never ran.
+        """
+        crates = sorted(_windows_unit_row_crates() & _windows_catalog_crates())
+        self.assertIn("mesh-llm-host-runtime", crates)
+        packages = _workspace_crates(ROOT)
+        workspace_packages = [
+            {"name": name, "path": path.relative_to(ROOT).as_posix()}
+            for name, path in sorted(packages.items())
+        ]
+        unit_only = sorted(_platform_windows_cfg_crates())
+
+        for crate in crates:
+            with self.subTest(crate=crate):
+                crate_path = packages[crate].relative_to(ROOT).as_posix()
+                payload = fixture("runtime.json")
+                payload["changed_files"] = [f"{crate_path}/src/lib.rs"]
+                payload["workspace_packages"] = workspace_packages
+                payload["affected_crates"] = [crate]
+
+                plan = PLANNER.build_plan(payload, root=ROOT)
+
+                self.assertIn("platform-checks", plan["required_slices"])
+                rows = [row["id"] for row in plan["matrices"]["platform_checks"]]
+                self.assertIn("windows-unit", rows)
+                # `windows_lane_plan.required` in
+                # `.github/actions/plan-ci/action.yml` is
+                # `([.matrices[] | length] | add) > 0` over the Windows
+                # projections of hosts, runtime_products, platform_checks and
+                # smoke; the row above is what makes it true. A
+                # `platform-windows-cfg` crate is a unit-only change, so it must
+                # not also pull in a Windows host or native runtime product.
+                if crate in unit_only:
+                    self.assertEqual(rows, ["windows-unit"])
+                    self.assertEqual(
+                        [
+                            row["id"]
+                            for key in ("hosts", "runtime_products")
+                            for row in plan["matrices"][key]
+                            if row["platform"] == "windows"
+                        ],
+                        [],
+                    )
+
+    def test_cfg_divergent_windows_row_crates_are_also_catalog_routed(self) -> None:
+        """A Windows row cannot compile a cfg-divergent crate no change selects.
+
+        The census below accepts row membership as coverage, which is only half
+        of it: the row must also be selected when that crate changes, and the
+        `platform-windows*` catalog rules are what select it.
+        """
+        invisible = sorted(
+            (_cfg_divergent_crates(ROOT) & _windows_unit_row_crates())
+            - _windows_catalog_crates()
+        )
+        self.assertEqual(
+            [],
+            invisible,
+            "these crates run in a Windows row but no catalog rule selects that "
+            "row for a change to them, so their Windows suite never runs on a PR",
+        )
+
+    def test_windows_unit_row_keeps_shared_owners_without_widening_macos(self) -> None:
+        shared = {"model-artifact", "mesh-llm-host-runtime", "mesh-llm"}
+        # The shared macOS/Windows owners stay identical and platform-neutral.
+        self.assertLessEqual(shared, _windows_unit_row_crates())
+        self.assertLessEqual(shared, _unit_row_crates("macos"))
+        # The crates the platform-windows step names run here and not on macOS;
+        # `mesh-llm-host-runtime` joins the same catalog domain only to select
+        # this row, and stays a shared owner of both unit rows above.
+        self.assertIn("mesh-llm-plugin", _windows_unit_row_crates())
+        self.assertNotIn("mesh-llm-plugin", _unit_row_crates("macos"))
+
+    def test_windows_unit_row_resolves_crates_through_the_package_resolver(self) -> None:
+        source = PLATFORM_CHECKS_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("steps.windows_packages.outputs.crates", source)
+        self.assertNotIn("foreach ($crate in 'model-artifact'", source)
+
+    def test_windows_dynamic_runtime_crates_can_name_the_system_feature(self) -> None:
+        """The dynamic-runtime owners run with `mesh-llm-system/dynamic-native-runtime`.
+
+        Cargo accepts that feature only for `mesh-llm-system` itself or for a
+        package that depends on it directly, so a crate added to that step
+        without the dependency would fail the row before any test runs.
+        """
+        workflow = yaml.safe_load(PLATFORM_CHECKS_WORKFLOW.read_text(encoding="utf-8"))
+        steps = workflow["jobs"]["platform_checks"]["steps"]
+        resolve = next(step for step in steps if step.get("id") == "windows_dynamic_packages")
+        run = next(step for step in steps if step.get("name") == "Run Windows unit tests")
+        self.assertIn(
+            "steps.windows_dynamic_packages.outputs.crates",
+            run["env"]["WINDOWS_DYNAMIC_TEST_CRATES"],
+        )
+        dynamic_loop = run["run"].split(
+            "foreach ($crate in @($env:WINDOWS_DYNAMIC_TEST_CRATES | ConvertFrom-Json)) {",
+            1,
+        )[1].split("}", 1)[0]
+        self.assertIn(
+            "cargo test --locked -p $crate --lib --features mesh-llm-system/dynamic-native-runtime",
+            dynamic_loop,
+        )
+
+        packages = _workspace_crates(ROOT)
+        system = tomllib.loads(
+            (packages["mesh-llm-system"] / "Cargo.toml").read_text(encoding="utf-8")
+        )
+        self.assertIn("dynamic-native-runtime", system["features"])
+        crates = json.loads(resolve["with"]["crates"])
+        self.assertTrue(crates)
+        for crate in crates:
+            with self.subTest(crate=crate):
+                if crate == "mesh-llm-system":
+                    continue
+                manifest = tomllib.loads(
+                    (packages[crate] / "Cargo.toml").read_text(encoding="utf-8")
+                )
+                self.assertIn("mesh-llm-system", manifest.get("dependencies", {}))
+
+    def test_every_cfg_divergent_crate_is_routed_or_explicitly_unverified(self) -> None:
+        """Platform-divergent code must be compiled on Windows or declared not to be.
+
+        A crate whose `src/` holds `cfg(windows)` / `cfg(unix)` code can break
+        on Windows while every Linux job stays green; that is how #1978 shipped
+        a lib-test target that had never compiled there.
+        """
+        unaccounted = sorted(
+            _cfg_divergent_crates(ROOT) - _windows_routed_crates() - WINDOWS_UNVERIFIED_CRATES
+        )
+        self.assertEqual(
+            [],
+            unaccounted,
+            "these crates carry platform-divergent code but no Windows job "
+            "compiles them; route them to a Windows row or add them to "
+            "WINDOWS_UNVERIFIED_CRATES",
+        )
+
+    def test_cfg_detector_marks_every_platform_form_and_nothing_else(self) -> None:
+        sources = {
+            "direct-windows": "#[cfg(windows)]\nfn platform() {}\n",
+            "direct-unix": "#[cfg(unix)]\nfn platform() {}\n",
+            "negated": "#[cfg(not(windows))]\nfn platform() {}\n",
+            "target-os-windows": "#[cfg(target_os = \"windows\")]\nfn platform() {}\n",
+            "cfg-macro": "const WINDOWS: bool = cfg!(windows);\n",
+            "cfg-attr": "#[cfg_attr(unix, derive(Debug))]\nstruct Platform;\n",
+            "compound": "#[cfg(any(windows, unix))]\nfn platform() {}\n",
+            "nested-first": "#[cfg(all(not(test), windows))]\nfn platform() {}\n",
+            "nested-macro": "const UNIX: bool = cfg!(all(not(test), unix));\n",
+            "spaced-macro": "const WINDOWS: bool = cfg ! (windows);\n",
+            "target-os-linux": (
+                "#[cfg(target_os = \"linux\")]\nfn platform() {}\n"
+                "#[cfg(target_os = \"macos\")]\nfn platform() {}\n"
+            ),
+            "target-family": "#[cfg(target_family = \"unix\")]\nfn platform() {}\n",
+        }
+        portable = {
+            "test-and-features": (
+                "#[cfg(test)]\nmod tests {}\n"
+                "#[cfg(all(test, not(feature = \"slow\")))]\nmod slow {}\n"
+                "fn windows_path() {}\n"
+            ),
+            "feature-named-windows": "#[cfg(feature = \"windows\")]\nfn platform() {}\n",
+            "quoted-example": (
+                "const SAMPLE: &str = r#\"#[cfg(windows)]\"#;\n"
+                "const TARGET: &str = \"cfg(unix)\";\n"
+            ),
+            "commented": "// #[cfg(windows)]\n/* cfg!(unix) */\nfn platform() {}\n",
+            "cfg-attr-value": (
+                "#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]\n"
+            ),
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            members = []
+            for crate, source in {**sources, **portable}.items():
+                crate_dir = root / "crates" / crate
+                (crate_dir / "src").mkdir(parents=True)
+                (crate_dir / "Cargo.toml").write_text(
+                    f'[package]\nname = "{crate}"\nversion = "0.1.0"\n',
+                    encoding="utf-8",
+                )
+                (crate_dir / "src" / "lib.rs").write_text(source, encoding="utf-8")
+                members.append(f'"crates/{crate}"')
+            (root / "Cargo.toml").write_text(
+                f"[workspace]\nmembers = [{', '.join(members)}]\n", encoding="utf-8"
+            )
+
+            self.assertEqual(set(sources), _cfg_divergent_crates(root))
+
+    def test_windows_unverified_list_has_no_stale_entries(self) -> None:
+        # An entry must still name a workspace crate that carries divergent
+        # code and that no Windows job compiles yet.
+        self.assertEqual(set(), WINDOWS_UNVERIFIED_CRATES - set(_workspace_crates(ROOT)))
+        self.assertEqual(set(), WINDOWS_UNVERIFIED_CRATES - _cfg_divergent_crates(ROOT))
+        self.assertEqual(set(), WINDOWS_UNVERIFIED_CRATES & _windows_routed_crates())
 
 
 if __name__ == "__main__":

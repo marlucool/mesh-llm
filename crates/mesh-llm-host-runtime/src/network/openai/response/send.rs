@@ -92,6 +92,7 @@ async fn send_json_with_status_and_headers_inner(
     route_observer: Option<OpenAiRouteObserver<'_>>,
 ) -> std::io::Result<()> {
     let status = match code {
+        200 => "OK",
         400 => "Bad Request",
         404 => "Not Found",
         410 => "Gone",
@@ -123,7 +124,9 @@ pub async fn send_400(stream: ClientStream, msg: &str) -> std::io::Result<()> {
     send_openai_error(stream, 400, msg, None).await
 }
 
-#[cfg(test)]
+// Currently reached only by the paid-ingress rejection path; compiled out with
+// wallets. Ungate if a wallet-free caller needs a bare error response.
+#[cfg(feature = "payments")]
 pub async fn send_error(stream: ClientStream, code: u16, msg: &str) -> std::io::Result<()> {
     send_openai_error(stream, code, msg, None).await
 }
@@ -172,6 +175,7 @@ async fn send_openai_error(
     route_observer: Option<OpenAiRouteObserver<'_>>,
 ) -> std::io::Result<()> {
     let status = match code {
+        200 => "OK",
         401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",
@@ -186,7 +190,23 @@ async fn send_openai_error(
         504 => "Gateway Timeout",
         _ => "Bad Request",
     };
-    let body = openai_error_body(code, msg);
+    let body = if stream.is_anthropic() {
+        let kind = match code {
+            400 | 422 => "invalid_request_error",
+            401 => "authentication_error",
+            403 => "permission_error",
+            404 => "not_found_error",
+            413 => "request_too_large",
+            429 => "rate_limit_error",
+            503 | 529 => "overloaded_error",
+            _ => "api_error",
+        };
+        serde_json::to_vec(
+            &serde_json::json!({"type":"error", "error":{"type":kind,"message":msg}}),
+        )?
+    } else {
+        openai_error_body(code, msg)
+    };
     let retry_after = if code == 429 {
         "Retry-After: 5\r\n"
     } else {
@@ -300,6 +320,7 @@ mod tests {
         assert_eq!(buf.matches("\r\n").count(), 1);
     }
 
+    #[cfg(feature = "payments")]
     #[tokio::test]
     async fn test_send_error_429_includes_retry_after() {
         let response = capture_proxy_error_response(|stream| async move {

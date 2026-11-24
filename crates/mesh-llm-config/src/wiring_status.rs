@@ -17,6 +17,7 @@
 //! validate` agrees with real runtime support instead of drifting from it.
 
 mod checkpoint;
+mod runtime;
 mod topology;
 
 /// The wiring status of one canonical config path, matching the `Status`
@@ -105,6 +106,13 @@ pub const WIRING_MANIFEST: &[WiringEntry] = &[
         behavior: WiringBehavior::None,
     },
     WiringEntry {
+        path: "gpu.host_ram_offload",
+        status: WiringStatus::Wired,
+        owner: "n/a",
+        reason: "",
+        behavior: WiringBehavior::None,
+    },
+    WiringEntry {
         path: "mesh_requirements.min_node_version",
         status: WiringStatus::Wired,
         owner: "n/a",
@@ -155,6 +163,13 @@ pub const WIRING_MANIFEST: &[WiringEntry] = &[
     },
     WiringEntry {
         path: "owner_control.advertise_addr",
+        status: WiringStatus::Wired,
+        owner: "n/a",
+        reason: "",
+        behavior: WiringBehavior::None,
+    },
+    WiringEntry {
+        path: "payments.wallet",
         status: WiringStatus::Wired,
         owner: "n/a",
         reason: "",
@@ -517,6 +532,11 @@ pub const WIRING_MANIFEST: &[WiringEntry] = &[
         reason: "",
         behavior: WiringBehavior::None,
     },
+    runtime::KV_CACHE_DISK_MODE,
+    runtime::KV_CACHE_DISK_DIRECTORY,
+    runtime::KV_CACHE_DISK_BUDGET_MIB,
+    runtime::KV_CACHE_DISK_MINIMUM_FREE_MIB,
+    runtime::KV_CACHE_DISK_CODEC,
     WiringEntry {
         path: "runtime.model_target_demand_upgrade_min_requests",
         status: WiringStatus::Wired,
@@ -602,13 +622,6 @@ pub const WIRING_MANIFEST: &[WiringEntry] = &[
         behavior: WiringBehavior::None,
     },
     WiringEntry {
-        path: "model_fit.kv_cache_policy",
-        status: WiringStatus::Wired,
-        owner: "n/a",
-        reason: "",
-        behavior: WiringBehavior::None,
-    },
-    WiringEntry {
         path: "model_fit.kv_offload",
         status: WiringStatus::Wired,
         owner: "n/a",
@@ -624,10 +637,10 @@ pub const WIRING_MANIFEST: &[WiringEntry] = &[
     },
     WiringEntry {
         path: "model_fit.cache_ram_mib",
-        status: WiringStatus::Unwired,
-        owner: "PR2",
-        reason: "Any positive value fails at model load",
-        behavior: WiringBehavior::BailsDownstream,
+        status: WiringStatus::Wired,
+        owner: "n/a",
+        reason: "",
+        behavior: WiringBehavior::None,
     },
     WiringEntry {
         path: "model_fit.cache_idle_slots",
@@ -941,6 +954,13 @@ pub const WIRING_MANIFEST: &[WiringEntry] = &[
     },
     WiringEntry {
         path: "throughput.continuous_batching",
+        status: WiringStatus::Wired,
+        owner: "n/a",
+        reason: "",
+        behavior: WiringBehavior::None,
+    },
+    WiringEntry {
+        path: "throughput.pipeline_decode_groups",
         status: WiringStatus::Wired,
         owner: "n/a",
         reason: "",
@@ -1623,6 +1643,20 @@ pub const WIRING_MANIFEST: &[WiringEntry] = &[
     },
     WiringEntry {
         path: "plugin.<name>.web_ui_enabled",
+        status: WiringStatus::Wired,
+        owner: "n/a",
+        reason: "",
+        behavior: WiringBehavior::None,
+    },
+    WiringEntry {
+        path: "plugin.<name>.web_ui_primary_tab",
+        status: WiringStatus::Wired,
+        owner: "n/a",
+        reason: "",
+        behavior: WiringBehavior::None,
+    },
+    WiringEntry {
+        path: "plugin.<name>.allow_peer_blocks",
         status: WiringStatus::Wired,
         owner: "n/a",
         reason: "",

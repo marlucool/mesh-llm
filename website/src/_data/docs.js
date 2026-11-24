@@ -39,7 +39,10 @@ export default [
     description: "Use Mesh through OpenAI-compatible clients and model-serving features.",
     links: [
       ["OpenAI-compatible API", "/docs/pages/openai-compatible-api/"],
+      ["Decisions API", "/docs/pages/decisions-api/"],
+      ["System One API", "/docs/pages/system-one-api/"],
       ["Automatic routing", "/docs/pages/automatic-routing/"],
+      ["KV caching", "/docs/pages/kv-caching/"],
       ["Streaming", "/docs/pages/openai-compatible-api/#streaming"],
       ["Tool calling", "/docs/pages/openai-compatible-api/#tool-calling"],
       ["Structured outputs", "/docs/pages/openai-compatible-api/#structured-outputs"]
@@ -47,9 +50,10 @@ export default [
   },
   {
     title: "SDKs",
-    description: "Embed mesh clients and local serving into Rust, Node.js, JVM/Android, and Swift apps.",
+    description: "Embed mesh clients and local serving into Python, Rust, Node.js, JVM/Android, and Swift apps.",
     links: [
       ["SDK overview", "/docs/pages/sdk/"],
+      ["Python", "/docs/pages/sdk-python/"],
       ["Rust", "/docs/pages/sdk-rust/"],
       ["Node.js & Electron", "/docs/pages/sdk-node/"],
       ["Java / Kotlin / Android", "/docs/pages/sdk-kotlin/"],
@@ -78,10 +82,10 @@ export default [
   },
   {
     title: "Meshes",
-    description: "Join the public mesh, create private meshes, and publish your own mesh.",
+    description: "Join the public mesh, connect your own machines, and understand admission policy.",
     links: [
       ["Join the public mesh", "/docs/pages/public-mesh/"],
-      ["Private meshes", "/docs/pages/private-meshes/"],
+      ["Your own mesh", "/docs/pages/private-meshes/"],
       ["Publish mesh", "/docs/pages/publish-mesh/"]
     ]
   },
@@ -114,6 +118,7 @@ export default [
       ["Crate API reference", "/crates/"],
       ["Skippy native API", "/docs/pages/skippy-api/"],
       ["OpenAI-compatible API", "/docs/pages/openai-compatible-api/"],
+      ["Decisions API", "/docs/pages/decisions-api/"],
       ["CLI reference", "/docs/pages/CLI/"],
       ["CLI explorer", "/docs/pages/cli-explorer/"],
       ["Testing playbook", "/docs/pages/testing/"]
